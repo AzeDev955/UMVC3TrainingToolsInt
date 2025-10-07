@@ -3,6 +3,8 @@ This tool adds more options to practice and setup situations that weren't presen
 The recent build uses Mid 2025 revisions Imgui & Sokol with a D3D11 backend.
 The public build has 5 pages.
 
+The next build will return to being internal.
+
 Explanations:
 ================================================================================================================================
 Extra:
