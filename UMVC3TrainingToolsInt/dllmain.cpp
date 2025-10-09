@@ -1968,15 +1968,19 @@ static void TheExtraDataTab()
 			if (P1C1GroundRemaingHitstun > P1C1GroundRemaingHitstunMAX || P1C1GroundRemaingHitstun == P1C1GroundRemaingHitstunMAX)
 			{
 				P1C1GroundRemaingHitstunMAX = P1C1GroundRemaingHitstun;
+				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 150, 210, 255));
 				sprintf(buf1, "%d/%d", (int)(P1C1GroundRemaingHitstun), (int)(P1C1GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
+				ImGui::PopStyleColor();				
 				ImGui::SameLine();
 				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
 			}
 			else
 			{
+				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 150, 210, 255));
 				sprintf(buf1, "%d/%d", (int)(P1C1GroundRemaingHitstun), (int)(P1C1GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
+				ImGui::PopStyleColor();
 				ImGui::SameLine();
 				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
 			}
@@ -2004,15 +2008,19 @@ static void TheExtraDataTab()
 			if (P1C1AirRemaingHitstun > P1C1AirRemaingHitstunMAX || P1C1AirRemaingHitstun == P1C1AirRemaingHitstunMAX)
 			{
 				P1C1AirRemaingHitstunMAX = P1C1AirRemaingHitstun;
-				sprintf(buf1, "%d/%d", (int)(P1C1AirRemaingHitstun), (int)(P1C1AirRemaingHitstunMAX));
+				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 150, 210, 255));
+				sprintf(buf1, "%d/%d", (int)(P1C1AirRemaingHitstun), (int)(P1C1AirRemaingHitstunMAX));				
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
+				ImGui::PopStyleColor();
 				ImGui::SameLine();
 				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
 			}
 			else
-			{
+			{				
+				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(230, 150, 210, 255));
 				sprintf(buf1, "%d/%d", (int)(P1C1AirRemaingHitstun), (int)(P1C1AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
+				ImGui::PopStyleColor();
 				ImGui::SameLine();
 				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
 			}
@@ -2362,6 +2370,8 @@ static void TheExtraDataTab()
 			}
 			P2C3AirRemaingHitstunPREV = P2C3AirRemaingHitstun;
 		}
+
+		
 
 #pragma endregion
 
@@ -3121,7 +3131,7 @@ static void TheExtraDataTab()
 //For Recording And Playback Stuff.
 static void TheRecordPlaybackTab()
 {
-	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P6_DATA", DefaultLanguage)).c_str()))
+	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P6_RECORDPLAYBACK", DefaultLanguage)).c_str()))
 	{
 		ImGui::Text((getLocalizedString(LocalMap, "P5_INCOMINGW", DefaultLanguage)).c_str());
 
@@ -4981,14 +4991,15 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		ImGui::SetNextWindowSize(wndSize, ImGuiCond_Always);
 
 		if (sAction) {
-			//Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
-			//InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), Memory::HookType::Call);
+			Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
+			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
 		}
 
 
 		// ImGui UI Starts Here!
 		if (ShowToolWindow) {
 			ImGui::Begin("Press F3 to toggle this window.", &ShowToolWindow, flags);
+			//ImGui::ShowMetricsWindow();
 
 			//ImGui::Text("Press F3 to toggle this window.");
 			// 
@@ -5060,6 +5071,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 						TheCharacterOptionsTab();
 						TheExtraDataTab();
 						TheIncomingStuffTab();
+						TheRecordPlaybackTab();
 						//TheDebugStuffTab();
 #if DEBUG
 						//TheDebugStuffTab();
