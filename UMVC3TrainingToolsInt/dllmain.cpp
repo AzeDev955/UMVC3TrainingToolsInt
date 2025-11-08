@@ -27,6 +27,9 @@ static int PreviousHeight = 0;
 //For Making the progress bar for blockstun timers blue.
 ImVec4 BStunColor = ImVec4(0.2f, 0.25f, 0.75f, 1.0f);
 
+char path[MAX_PATH];
+HMODULE hm = NULL;
+
 std::string TestStr = "Click Me Please.";
 //sMvc3Manager* ThreeManager;
 
@@ -151,6 +154,26 @@ static bool CheckGame()
 		MessageBoxA(0, "Unfortunaetly this version of the game is not compatible.\nYou need the most up to date Steam version of\nUltimate Marvel vs Capcom 3(Or the April 2017 version).", 0, MB_ICONINFORMATION);
 		return false;
 	}
+}
+
+static void GetASIPath()
+{
+	hm = NULL;
+
+	if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+		GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		(LPCSTR)&CheckGame, &hm) == 0)
+	{
+		int ret = GetLastError();
+		fprintf(stderr, "GetModuleHandle failed, error = %d\n", ret);
+	}
+	if (GetModuleFileName(hm, path, sizeof(path)) == 0)
+	{
+		int ret = GetLastError();
+		fprintf(stderr, "GetModuleFileName failed, error = %d\n", ret);
+		// Return or however you want to handle an error.
+	}
+
 }
 
 static void TheAboutWindow(bool* p_open)
@@ -4860,6 +4883,10 @@ static void TheRecordPlaybackTab()
 DWORD WINAPI MainThread(LPVOID lpReserved)
 {
 
+
+	//Waits a hot moment to ensure that the game's own D3D device is active before doing anything.
+	Sleep(3000);
+
 	// Starts Constructing a separate window to open. Based on code from deleted account xyzzy on cpluscplus.
 	static const TCHAR WindowName_sz[] = TEXT("TT Port Powered by Imgui");
 	static const TCHAR WindowTitle_sz[] = TEXT("UMVC3 Training Tools V0.9B By Eternal Yoshi");
@@ -4910,13 +4937,18 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	(void)io;
 	io.DisplaySize = wndSize;
 
-	//Gets the base project path, the adds the rest of the font path to load it properly. Thanks Remy Lebeau.
-	std::filesystem::path BaseProjectPath = std::filesystem::current_path();
-	std::string MainFontPath = BaseProjectPath.string() + "\\Resources\\FontToUse.ttf";
+	//Gets the path the asi is in currently, then uses that to find the Resources folder.
+	GetASIPath();
+	std::filesystem::path BaseProjectPath = path;
+	std::string Workingpath = path;
+
+	Workingpath = Workingpath.substr(0, Workingpath.find_last_of("\\/"));
+
+	std::string MainFontPath = Workingpath + "\\Resources\\FontToUse.ttf";
 	ImFont* font1 = io.Fonts->AddFontFromFileTTF(MainFontPath.c_str(), 17.0f);
 
 	//For the.csv file.
-	CSVPath = BaseProjectPath.string() + "\\Resources\\3TTAppText.csv";
+	CSVPath = Workingpath + "\\Resources\\3TTAppText.csv";
 	//Check if it exists.
 	if (std::filesystem::exists(CSVPath))
 	{
