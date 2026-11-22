@@ -1,5 +1,5 @@
 # Verificación local del mod
 
-Cuando se prepare un cambio del mod para probarlo, compila Release x64 y actualiza `installer/UMVC3TrainingToolsInt-Setup.exe` con el `.asi` recién generado. Comprueba que el `.asi` incluido en el instalador coincide con la compilación que se va a probar. Entrega el enlace al instalador actualizado e indica qué se ha verificado en el juego.
+Cuando se prepare un cambio del mod para probarlo, ejecuta `installer/Build-Release.ps1`. El script compila Release x64, actualiza `installer/UMVC3TrainingToolsInt-Setup.exe` y comprueba que el `.asi` incluido coincide con la compilación. Entrega el enlace al instalador actualizado e indica qué se ha verificado en el juego.
 
-Antes de compilar para una release pública, ajusta `VersionTag` en `UMVC3TrainingToolsInt/code/ReleaseUpdate.h` para que coincida con la etiqueta `vX.Y.Z`. Adjunta el instalador con el nombre exacto `UMVC3TrainingToolsInt-Setup.exe` a la release estable de GitHub.
+Antes de publicar, ajusta `VersionTag` en `UMVC3TrainingToolsInt/code/ReleaseUpdate.h` y añade `changelog/vX.Y.Z.md`. GitHub Actions publica el instalador al subir la etiqueta `vX.Y.Z` de un commit de `main`. Para generar un artefacto de prueba, ejecuta el workflow manualmente.
