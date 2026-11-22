@@ -11,6 +11,7 @@ namespace TrainingTeamEditor
 		float p1;
 		float p2;
 	};
+	inline constexpr XPositions Center{ -125.0f, 125.0f };
 	inline constexpr XPositions LeftCorner{ -750.0f, -800.0f };
 	inline constexpr XPositions RightCorner{ 750.0f, 800.0f };
 
@@ -23,6 +24,6 @@ namespace TrainingTeamEditor
 	bool IsTrainingPlayable();
 	void Draw();
 	bool Update();
-	void RequestTrainingRestart(std::optional<XPositions> positions = std::nullopt);
+	bool RequestTrainingRestart(std::optional<XPositions> positions = std::nullopt);
 	void UpdateTrainingRestart(bool watchNativeRestart);
 }

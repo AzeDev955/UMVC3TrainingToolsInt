@@ -5,13 +5,13 @@
 namespace TrainingPad
 {
 	enum class Shortcut { QuickTraining, Tools, ResetTraining };
-	enum class HorizontalDirection { Neutral, Left, Right };
+	enum class Direction { Neutral, Left, Right, Down, Up };
 
 	void Initialize(HMODULE mod, HWND menuWindow);
 	void Shutdown();
 	void Poll();
 	bool Pressed(Shortcut shortcut);
-	HorizontalDirection HeldHorizontalDirection();
+	Direction HeldDirection();
 	void UpdateNavigation(bool focused);
 	void DrawSettings();
 }

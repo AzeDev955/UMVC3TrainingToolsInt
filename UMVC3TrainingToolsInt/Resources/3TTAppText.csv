@@ -294,7 +294,7 @@ PAD_SAVE_FAILED,Could not save controller bindings.,No se pudieron guardar los a
 PAD_HEADER,Controller shortcuts,Atajos del mando
 PAD_CONNECTED,Controller %lu connected,Mando %lu conectado
 PAD_NOT_CONNECTED,No XInput controller detected.,No se detectó ningún mando XInput.
-PAD_CORNER_HINT,Hold left or right and press Reset Training to put P2 in that corner.,Mantén izquierda o derecha y pulsa Reiniciar entrenamiento para colocar a J2 en esa esquina.
+PAD_RESET_HINT,Left or right puts P2 in that corner. Down returns to center. Up swaps P1 and P2. Reset with no direction repeats the last positions.,Izquierda o derecha coloca a J2 en esa esquina. Abajo vuelve al centro. Arriba intercambia a J1 y J2. Reiniciar sin dirección repite las últimas posiciones.
 UI_SPANISH,Español,Español
 UI_ENGLISH,English,English
 PAD_LB,LB / L1,LB / L1

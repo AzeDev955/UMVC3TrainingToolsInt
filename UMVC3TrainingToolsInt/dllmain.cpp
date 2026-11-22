@@ -314,8 +314,8 @@ static void TheExtraOptionsTab()
 		if (ImGui::Button(UiText("P1_POSDEFAULT")))
 		{
 
-			p1Pos = -125.0f;
-			p2Pos = 125.0f;
+			p1Pos = TrainingTeamEditor::Center.p1;
+			p2Pos = TrainingTeamEditor::Center.p2;
 
 
 		}
@@ -4961,6 +4961,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	ReleaseUpdate::CheckAtStartup(hWnd);
 	bool quickTrainingSetup = false;
 	bool recordingHookInstalled = false;
+	std::optional<TrainingTeamEditor::XPositions> previousDirectionalReset;
 	HWND returnToGame = nullptr;
 	const auto hideTool = [&]()
 	{
@@ -5025,13 +5026,29 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		const bool runTrainingUpdates = TrainingTeamEditor::Update();
 		if (gameFocused && !focusTool && runTrainingUpdates && TrainingPad::Pressed(TrainingPad::Shortcut::ResetTraining))
 		{
-			const auto direction = TrainingPad::HeldHorizontalDirection();
-			std::optional<TrainingTeamEditor::XPositions> positions;
-			if (direction == TrainingPad::HorizontalDirection::Left)
+			auto positions = previousDirectionalReset;
+			switch (TrainingPad::HeldDirection())
+			{
+			case TrainingPad::Direction::Neutral:
+				break;
+			case TrainingPad::Direction::Left:
 				positions = TrainingTeamEditor::LeftCorner;
-			else if (direction == TrainingPad::HorizontalDirection::Right)
+				break;
+			case TrainingPad::Direction::Right:
 				positions = TrainingTeamEditor::RightCorner;
-			TrainingTeamEditor::RequestTrainingRestart(positions);
+				break;
+			case TrainingPad::Direction::Down:
+				positions = TrainingTeamEditor::Center;
+				break;
+			case TrainingPad::Direction::Up:
+			{
+				const auto previous = positions.value_or(TrainingTeamEditor::XPositions{ p1Pos, p2Pos });
+				positions = TrainingTeamEditor::XPositions{ previous.p2, previous.p1 };
+				break;
+			}
+			}
+			if (TrainingTeamEditor::RequestTrainingRestart(positions))
+				previousDirectionalReset = positions;
 		}
 		if (runTrainingUpdates)
 			TrainingTeamEditor::UpdateTrainingRestart(ShowToolWindow && !quickTrainingSetup);

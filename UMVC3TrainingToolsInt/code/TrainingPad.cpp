@@ -345,19 +345,28 @@ bool TrainingPad::Pressed(Shortcut shortcut)
 	return false;
 }
 
-TrainingPad::HorizontalDirection TrainingPad::HeldHorizontalDirection()
+TrainingPad::Direction TrainingPad::HeldDirection()
 {
 	if (activeController >= XUSER_MAX_COUNT)
-		return HorizontalDirection::Neutral;
+		return Direction::Neutral;
 	const auto& controller = controllers[activeController];
 	const DWORD directions = controller.held & ~suppressedButton;
-	const bool left = (directions & XINPUT_GAMEPAD_DPAD_LEFT)
-		|| controller.pad.sThumbLX < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
-	const bool right = (directions & XINPUT_GAMEPAD_DPAD_RIGHT)
-		|| controller.pad.sThumbLX > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
-	if (left == right)
-		return HorizontalDirection::Neutral;
-	return left ? HorizontalDirection::Left : HorizontalDirection::Right;
+	const bool left = (directions & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
+	const bool right = (directions & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
+	if (left != right)
+		return left ? Direction::Left : Direction::Right;
+	const bool down = (directions & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
+	const bool up = (directions & XINPUT_GAMEPAD_DPAD_UP) != 0;
+	if (down != up)
+		return down ? Direction::Down : Direction::Up;
+
+	const int x = controller.pad.sThumbLX;
+	const int y = controller.pad.sThumbLY;
+	if ((std::max)(std::abs(x), std::abs(y)) <= XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
+		return Direction::Neutral;
+	if (std::abs(x) >= std::abs(y))
+		return x < 0 ? Direction::Left : Direction::Right;
+	return y < 0 ? Direction::Down : Direction::Up;
 }
 
 void TrainingPad::UpdateNavigation(bool focused)
@@ -400,7 +409,7 @@ void TrainingPad::DrawSettings()
 	for (auto& binding : bindings)
 		DrawBinding(binding);
 	if (bindings[static_cast<size_t>(Shortcut::ResetTraining)].button)
-		ImGui::TextWrapped("%s", UiText("PAD_CORNER_HINT"));
+		ImGui::TextWrapped("%s", UiText("PAD_RESET_HINT"));
 	if (*settingsStatus)
 		ImGui::TextWrapped("%s", UiText(settingsStatus));
 }
