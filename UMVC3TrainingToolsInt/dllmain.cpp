@@ -4975,6 +4975,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	TrainingShortcut::Initialize(D3ddev);
 	TrainingPad::Initialize(static_cast<HMODULE>(lpReserved), hWnd);
 	bool quickTrainingSetup = false;
+	bool recordingHookInstalled = false;
 	HWND returnToGame = nullptr;
 	const auto hideTool = [&]()
 	{
@@ -5003,10 +5004,10 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		TrainingPad::Poll();
 		const bool padTools = gameFocused && TrainingPad::Pressed(TrainingPad::Shortcut::Tools);
 		const bool toolToggleDown = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
-		if (padTools || (toolToggleDown && !toolToggleWasDown)) {
+		const bool keyboardTools = (gameFocused || foreground == hWnd) && toolToggleDown && !toolToggleWasDown;
+		if (padTools || keyboardTools) {
 			ShowToolWindow = !ShowToolWindow;
-			if (padTools && ShowToolWindow)
-				quickTrainingSetup = false;
+			quickTrainingSetup = false;
 		}
 
 		toolToggleWasDown = toolToggleDown;
@@ -5020,7 +5021,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			ShowToolWindow = true;
 		}
 
-		const bool focusTool = openQuickSetup || (padTools && ShowToolWindow);
+		const bool focusTool = openQuickSetup || ((padTools || keyboardTools) && ShowToolWindow);
 		if (ShowToolWindow) {
 			if (!IsWindowVisible(hWnd))
 				ShowWindow(hWnd, SW_SHOW);
@@ -5041,9 +5042,10 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			TrainingTeamEditor::RequestTrainingRestart();
 		if (runTrainingUpdates)
 			TrainingTeamEditor::UpdateTrainingRestart(ShowToolWindow && !quickTrainingSetup);
-		if (sAction && runTrainingUpdates) {
+		if (!recordingHookInstalled && sAction && runTrainingUpdates) {
 			Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
 			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
+			recordingHookInstalled = true;
 		}
 
 		if (!ShowToolWindow)
