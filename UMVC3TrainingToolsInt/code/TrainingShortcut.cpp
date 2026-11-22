@@ -2,6 +2,7 @@
 #include "TrainingShortcut.h"
 
 #include "TrainingTeamEditor.h"
+#include "Localizer.h"
 #include "umvc3utils.h"
 #include "../minhook/include/MinHook.h"
 #include <algorithm>
@@ -67,6 +68,7 @@ namespace
 	EndScene originalEndScene = nullptr;
 	HWND toolWindow = nullptr;
 	IDirect3DDevice9* textureDevice = nullptr;
+	bool textureSpanish = false;
 	IDirect3DTexture9* buttonTexture = nullptr;
 	bool mouseWasDown = false;
 	bool keyWasDown = false;
@@ -404,7 +406,7 @@ namespace
 		textureDevice = nullptr;
 	}
 
-	bool CreateButtonTexture(IDirect3DDevice9* device)
+	bool CreateButtonTexture(IDirect3DDevice9* device, bool spanish)
 	{
 		HDC dc = CreateCompatibleDC(nullptr);
 		if (!dc)
@@ -436,7 +438,7 @@ namespace
 		HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
 		SetTextColor(dc, RGB(240, 247, 255));
 		SetBkMode(dc, TRANSPARENT);
-		DrawTextW(dc, L"Training  [F4]", -1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+		DrawTextW(dc, spanish ? L"Entrenar  [F4]" : L"Training  [F4]", -1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 		GdiFlush();
 
 		IDirect3DTexture9* texture = nullptr;
@@ -456,6 +458,7 @@ namespace
 				texture->UnlockRect(0);
 				buttonTexture = texture;
 				textureDevice = device;
+				textureSpanish = spanish;
 			}
 			else
 				texture->Release();
@@ -480,10 +483,11 @@ namespace
 
 	void DrawButton(IDirect3DDevice9* device, HWND window, const D3DVIEWPORT9& viewport)
 	{
-		if (textureDevice != device)
+		const bool spanish = Localizer::IsSpanish();
+		if (textureDevice != device || textureSpanish != spanish)
 		{
 			ReleaseTexture();
-			if (!CreateButtonTexture(device))
+			if (!CreateButtonTexture(device, spanish))
 				return;
 		}
 

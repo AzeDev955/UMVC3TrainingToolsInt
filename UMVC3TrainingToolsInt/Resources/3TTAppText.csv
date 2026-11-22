@@ -1,180 +1,329 @@
-ID,English
-NOT_ACTIVATED1,Nothing Doing until you open the game.
-NOT_ACTIVATED2,"If the game is open and nothing is happening,\nthen it could be possible you are\nusing an invalid version."
-ACTIVATED_TRUE,If you can read this then the tool recognizes Marvel 3 is open.
-ACTIVATED_TRUE2,The version open is valid too.
-ACTIVATED_NOTINMATCH,Choose the characters and get into a match.
-ACTIVATED_INMAINMENU,Get to Training Mode so this tool can do its thing.
-MENU_FILE,File
-FILE_RESETSETTINGS,Reset Settings To Default
-MENU_MISC,Misc
-MISC_ABOUT,About
-P1_EXTRA,Extra
-P1_RESTARTINTRO,Restart to Intros
-P1_RESTARTINTROD,"""Note: Pressing the above button multiple times will result\n in the intro replaying after FIGHT!!!"""
-P1_RESTARTREADY,Restart to Ready
-P1_RESTARTREADYD,"Restarts training mode, but goes to the READY!!! state."
-P1_RESTARTTRAINING,Restart Training Mode
-P1_POSITIONING,Positioning
-P1_PLAYER1POSITION,Player 1 Position
-P1_PLAYER1XPOSITION,P1 X Position
-P1_PLAYER2POSITION,Player 2 Position
-P1_PLAYER2XPOSITION,P2 X Position
-P1_POSITIONPRESETS,Position Presets
-P1_POSDEFAULT,Default
-P1_POSDEFAULT2P,Default P2 Side
-P1_POSLEFT,Left Corner
-P1_POSLEFT2P,Left Corner P2 Side
-P1_POSRIGHT,Right Corner
-P1_POSRIGHT2P,Right Corner P2 Side
-P1_ETC,Etc
-P1_ENDLESSX1P,Endless X-Factor P1
-P1_ENDLESSX1PD,"""Sets and locks P1's X-Factor timer to a crazy high value\nto keep it going perpetually."""
-P1_ENDLESSX2P,Endless X-Factor P2
-P1_ENDLESSX2PD,"""Sets and locks P2's X-Factor timer to a crazy high value\nto keep it going perpetually."""
-P1_CHARACTERSPEEDP1,Character Speed P1
-P1_CHARACTERSPEEDP1D,"""Sets the speed of all of Player 1's characters.\nWill affect the pitch of the characters' sounds."""
-P1_CHARACTERSPEEDP2,Character Speed P2
-P1_CHARACTERSPEEDP2D,"""Sets the speed of all of Player 2's characters.\nWill affect the pitch of the characters' sounds."""
-P1_NORMALSPEEDP1,Normal Speed P1
-P1_NORMALSPEEDP2,Normal Speed P2
-P1_VJOESLOWSPEEDP1,Vjoe Slow Speed P1
-P1_VJOESLOWSPEEDP2,Vjoe Slow Speed P2
-P1_VALEOFMISTSPEEDP1,Vale of Mist Slow Speed P1
-P1_VALEOFMISTSPEEDP2,Vale of Mist Slow Speed P2
-P1_MOVEINPUTSTOLEFT,Move Inputs to Left Side of Game Screen
-P1_MOVEINPUTSTOLEFTD,"""Moves the input display to present inputson the left side\nof the screen. Also displays them vertically."""
-P1_MORESOON,More features coming soon!
-P2_STATUS,Status
-P2_CHARACTERHP,Character HP
-P2_SETINDIVIDUALHP,Set Individual Character Health(Applies during restarts).
-P2_SETINDIVIDUALHPD,"""Be sure to turn Life Recovery off in the pause menu options\nfor this to take effect properly."""
-P2_APPLYREDHPP1,Also Apply To P1's Red Health
-P2_APPLYREDHPP1D,Applies specified HP values to red health of Player 1's team.
-P2_APPLYREDHPP2,Also Apply To P2's Red Health
-P2_APPLYREDHPP2D,Applies specified HP values to red health of Player 2's team.
-P2_HEALTHP1C1,Player 1 Character 1 Health
-P2_HEALTHP1C2,Player 1 Character 2 Health
-P2_HEALTHP1C3,Player 1 Character 3 Health
-P2_HEALTHP2C1,Player 2 Character 1 Health
-P2_HEALTHP2C2,Player 2 Character 2 Health
-P2_HEALTHP2C3,Player 2 Character 3 Health
-P2_HYPERMETER,Hyper Meter
-P2_PLAYER1METER,Player 1 Meter
-P2_P1METER,P1 Meter
-P2_P1METERD,Sets player 1's meter. Every level of meter is 10000.
-P2_PLAYER2METER,Player 2 Meter
-P2_P2METER,P2 Meter
-P2_P2METERD,Sets player 2's meter. Every level of meter is 10000.
-P2_METERLOCKP1,Lock P1 Meter
-P2_METERLOCKP1D,Locks player 1's meter at the specified value.
-P2_METERLOCKP2,Lock P2 Meter
-P2_METERLOCKP2D,Locks player 2's meter at the specified value.
-P2_JAMMINGBOMB,Jamming Bomb/Reversed Controls
-P2_JAMP1C1,Player 1 Character 1
-P2_JAMP1C2,Player 1 Character 2
-P2_JAMP1C3,Player 1 Character 3
-P2_JAMP2C1,Player 2 Character 1
-P2_JAMP2C2,Player 2 Character 2
-P2_JAMP2C3,Player 2 Character 3
-P2_JAMD,"""Reverses controls for this character,\ngiving them the Jamming Bomb effect.\nNote that no VFX is present when using this."""
-P3_CHARACTER,Character
-P3_REMEMBER,"""Remember! These Parameters will only take\neffect in training mode."""
-P3_FRANK,Frank West
-P3_FRANKLEVEL,Frank West's Level
-P3_FRANKLEVELD,"""Sets Frank West's level. His Prestige Points will be\nset to the lowest amount required for that level."""
-P3_MRWRIGHT,Phoenix Wright
-P3_MRWRIGHTEVIDENCE,Mr. Wright's Evidence
-P3_MRWRIGHTEVIDENCE1,Evidence Slot 1
-P3_MRWRIGHTEVIDENCE2,Evidence Slot 2
-P3_MRWRIGHTEVIDENCE3,Evidence Slot 3
-P3_MRWRIGHTEVIDENCED,Sets Mr. Wright's Evidence for this slot.
-P3_MRWRIGHTLOCKEVIDENCE,Lock Evidence
-P3_MRWRIGHTLOCKEVIDENCED,"""Prevents the selected Evidence from being discarded when\nrestarting Training Mode, exiting Turnabout Mode, and discarding."""
-P3_MRWRIGHTTURNABOUTT,Turnabout Toggle
-P3_MRWRIGHTTURNABOUTTD,"""Activates/Deactivates Turnabout Mode with no time limit, regardless\nof Evidence. Note that the glow isn't present but the\nmode still functions."""
-P3_JEAN,Phoenix/Jean
-P3_JEANDARKPHOENIX,Dark Phoenix Toggle
-P3_JEANDARKPHOENIXD,"Activates Dark Phoenix, regardless of meter and health state."
-P3_MODOK,MODOK
-P3_MODOKLOU,MODOK Level of Understanding
-P3_MODOKLOUD,"""Sets MODOK's level of understanding. The flame on his head\nwon't update until at least 1 LOU point is used."""
-P3_MODOKLOCKU,Lock Understanding
-P3_MODOKLOCKUD,Keeps MODOK's Level of Understanding at the specified value.
-P3_DORMAMMU,Dormammu
-P3_DORMAMMUSPELL,Dormammu's Spell Charges
-P3_DORMAMMUSPELLRED,Power Of The Destructor
-P3_DORMRED,Red
-P3_DORMAMMUSPELLREDD,"""Sets Dormammu's Red Charges and locks it.\nSet to 0 for unmodified behavior."""
-P3_DORMAMMUSPELLBLUE,Power Of The Creator
-P3_DORMBLUE,Blue
-P3_DORMAMMUSPELLBLUED,"""Sets Dormammu's Blue Charges and locks it.\nSet to 0 for unmodified behavior."""
-P3_DORMAMMUSPELLLOCK,
-P3_DEADPOOL,Deadpool
-P3_DEADPOOLTELEPORTCOUNT,Teleport Count
-P3_DEADPOOLTELEPORTCOUNTD,"""Sets Deadpool's teleport counter. It\nbackfires after 2 successful teleports."""
-P3_DEADPOOLTELEPORTLOCK,Lock Teleport Count
-P3_DEADPOOLTELEPORTLOCKD,Keeps Deadpool's teleport counter at the specified value.
-P3_WESKER,Wesker
-P3_WESKERBREAKGLASSES,Break Glasses
-P3_WESKERBREAKATSTART,Break Glasses At Training Mode Restart
-P3_WESKERBREAKGLASSESD,"""Break Wesker's Glasses if on, destroy Wesker's Glasses\nif they're already broken. This does not restore\nthem if Glasses are off."""
-P3_ETC,Etc.
-P3_ENDLESSINSTALLS,Endless Install Toggle
-P3_ENDLESSINSTALLSD,"""Sets and locks the install timers to a\ncrazy high value to keep them going. Note: will only\nwork for default characters and not modded ones at the moment."""
-P4_DATA,Data
-P4_DATAD,
-P4_HITSTUNTIMERS,Hitstun Timers
-P4_HITSTUNTIMERSSH,Hitstun Stuff - Click to Show/hide
-P4_HITSTUNPLAYER,Character
-P4_HITSTUNGROUND,Ground
-P4_HITSTUNAIR,Air
-P4_HITSTUNMAXGROUND,Max Ground
-P4_HITSTUNMAXAIR,Max Air
-P4_HITSTUNP1C1,P1 Character 1
-P4_HITSTUNP1C2,P1 Character 2
-P4_HITSTUNP1C3,P1 Character 3
-P4_HITSTUNP2C1,P2 Character 1
-P4_HITSTUNP2C2,P2 Character 2
-P4_HITSTUNP2C3,P2 Character 3
-P5_INCOMING,Incoming
-P5_INCOMINGW,Experimental! Be Smart about using these.
-P5_INCOMINGD,"""Be sure to set Life Recovery to Off in the Pause Menu\nfor these to work properly."""
-P5_INCOMINGTD,Time Delay(Frames)
-P5_INCOMINGFRAMES,Frames Until Death
-P5_INCOMINGFRAMESD,"""Delays the death on training mode restart by the speciifed\nframes. 60 frames in a second. Try this\nif you want to have a charged action when doing incomings."""
-P5_INCOMINGKOPOSX,Position of KO: X
-P5_INCOMINGKOPOSXD,Sets horizotnal position of the character before they die.
-P5_INCOMINGKOPOSY,Position of KO: Y
-P5_INCOMINGKOPOSYD,Sets vertical position of the character before they die.
-P5_INCOMINGSYNCP1SPOS,Sync to P1 Start Position
-P5_INCOMINGSYNCP2SPOS,Sync to P2 Start Position
-P5_INCOMINGDEATHPOSPRESETS,Death Position Presets
-P5_INCOMINGPOSCENTER,Center
-P5_INCOMINGPOSLCORNER,Left Corner
-P5_INCOMINGPOSRCORNER,Right Corner
-P5_KOACTIVECHARACTERP1,KO Player 1's Active Character At Training Mode Restart
-P5_KOACTIVECHARACTERP1D,Sets Player 1's character to die upon Training Mode restart.
-P5_KOACTIVECHARACTERP2,KO Player 2's Active Character At Training Mode Restart
-P5_KOACTIVECHARACTERP2D,Sets Player 2's character to die upon Training Mode restart.
-P5_KOTOGGLES,KO Toggles
-P5_KOTOGGLEP1C1,Player 1 C1
-P5_KOTOGGLEP1C2,Player 1 C2
-P5_KOTOGGLEP1C3,Player 1 C3
-P5_KOTOGGLEP2C1,Player 2 C1
-P5_KOTOGGLEP2C2,Player 2 C2
-P5_KOTOGGLEP2C3,Player 2 C3
-P3_EVIDENCE1,Nothing
-P3_EVIDENCE2,Photo
-P3_EVIDENCE3,Watch
-P3_EVIDENCE4,Vase
-P3_EVIDENCE5,Folder
-P3_EVIDENCE6,Phone
-P3_EVIDENCE7,Knife
-P3_EVIDENCE8,Sunglasses
-P3_EVIDENCE9,Beer
-P3_EVIDENCEA,Bonsai
-P3_EVIDENCEB,Doll
-P3_EVIDENCEC,Figurine
-P3_EVIDENCED,Plunger
-P3_EVIDENCEE,Chicken
+ID,English,Spanish
+NOT_ACTIVATED1,Nothing Doing until you open the game.,Abre el juego para empezar.
+NOT_ACTIVATED2,"If the game is open and nothing is happening,\nthen it could be possible you are\nusing an invalid version.","Si el juego está abierto y la herramienta no responde, puede que la versión no sea compatible."
+ACTIVATED_TRUE,If you can read this then the tool recognizes Marvel 3 is open.,MVC3 está abierto.
+ACTIVATED_TRUE2,The version open is valid too.,La versión del juego es compatible.
+ACTIVATED_NOTINMATCH,Choose the characters and get into a match.,Elige los personajes y entra en una partida.
+ACTIVATED_INMAINMENU,Get to Training Mode so this tool can do its thing.,Entra en el modo Entrenamiento para usar la herramienta.
+MENU_FILE,File,Archivo
+FILE_RESETSETTINGS,Reset Settings To Default,Restablecer ajustes
+MENU_MISC,Misc,Varios
+MISC_ABOUT,About,Acerca de
+P1_EXTRA,Extra,Extra
+P1_RESTARTINTRO,Restart to Intros,Reiniciar con introducciones
+P1_RESTARTINTROD,"""Note: Pressing the above button multiple times will result\n in the intro replaying after FIGHT!!!""","Si pulsas varias veces, la introducción volverá a reproducirse tras «¡Lucha!»."
+P1_RESTARTREADY,Restart to Ready,Reiniciar desde «¡Listos!»
+P1_RESTARTREADYD,"Restarts training mode, but goes to the READY!!! state.",Reinicia el entrenamiento desde la cuenta previa a la lucha.
+P1_RESTARTTRAINING,Restart Training Mode,Reiniciar entrenamiento
+P1_POSITIONING,Positioning,Posiciones
+P1_PLAYER1POSITION,Player 1 Position,Posición del jugador 1
+P1_PLAYER1XPOSITION,P1 X Position,Posición X J1
+P1_PLAYER2POSITION,Player 2 Position,Posición del jugador 2
+P1_PLAYER2XPOSITION,P2 X Position,Posición X J2
+P1_POSITIONPRESETS,Position Presets,Posiciones predefinidas
+P1_POSDEFAULT,Default,Centro
+P1_POSDEFAULT2P,Default P2 Side,"Centro, lados invertidos"
+P1_POSLEFT,Left Corner,Esquina izquierda
+P1_POSLEFT2P,Left Corner P2 Side,"Esquina izquierda, lados invertidos"
+P1_POSRIGHT,Right Corner,Esquina derecha
+P1_POSRIGHT2P,Right Corner P2 Side,"Esquina derecha, lados invertidos"
+P1_ETC,Etc,Otras opciones
+P1_ENDLESSX1P,Endless X-Factor P1,Factor X ilimitado J1
+P1_ENDLESSX1PD,"""Sets and locks P1's X-Factor timer to a crazy high value\nto keep it going perpetually.""",Mantiene activo el Factor X del jugador 1.
+P1_ENDLESSX2P,Endless X-Factor P2,Factor X ilimitado J2
+P1_ENDLESSX2PD,"""Sets and locks P2's X-Factor timer to a crazy high value\nto keep it going perpetually.""",Mantiene activo el Factor X del jugador 2.
+P1_CHARACTERSPEEDP1,Character Speed P1,Velocidad de personajes J1
+P1_CHARACTERSPEEDP1D,"""Sets the speed of all of Player 1's characters.\nWill affect the pitch of the characters' sounds.""",Ajusta la velocidad de los personajes del jugador 1. También cambia el tono de sus sonidos.
+P1_CHARACTERSPEEDP2,Character Speed P2,Velocidad de personajes J2
+P1_CHARACTERSPEEDP2D,"""Sets the speed of all of Player 2's characters.\nWill affect the pitch of the characters' sounds.""",Ajusta la velocidad de los personajes del jugador 2. También cambia el tono de sus sonidos.
+P1_NORMALSPEEDP1,Normal Speed P1,Velocidad normal J1
+P1_NORMALSPEEDP2,Normal Speed P2,Velocidad normal J2
+P1_VJOESLOWSPEEDP1,Vjoe Slow Speed P1,Ralentización de Viewtiful Joe J1
+P1_VJOESLOWSPEEDP2,Vjoe Slow Speed P2,Ralentización de Viewtiful Joe J2
+P1_VALEOFMISTSPEEDP1,Vale of Mist Slow Speed P1,Ralentización de Vale of Mist J1
+P1_VALEOFMISTSPEEDP2,Vale of Mist Slow Speed P2,Ralentización de Vale of Mist J2
+P1_MOVEINPUTSTOLEFT,Move Inputs to Left Side of Game Screen,Mostrar los controles a la izquierda
+P1_MOVEINPUTSTOLEFTD,"""Moves the input display to present inputson the left side\nof the screen. Also displays them vertically.""","Coloca el historial de controles en vertical, a la izquierda de la pantalla."
+P1_MORESOON,More features coming soon!,Próximamente habrá más funciones.
+P2_STATUS,Status,Estado
+P2_CHARACTERHP,Character HP,Vida de los personajes
+P2_SETINDIVIDUALHP,Set Individual Character Health(Applies during restarts).,Ajustar la vida de cada personaje al reiniciar
+P2_SETINDIVIDUALHPD,"""Be sure to turn Life Recovery off in the pause menu options\nfor this to take effect properly.""",Desactiva la recuperación de vida en las opciones del menú de pausa.
+P2_APPLYREDHPP1,Also Apply To P1's Red Health,Aplicar también a la vida roja de J1
+P2_APPLYREDHPP1D,Applies specified HP values to red health of Player 1's team.,Aplica los valores de vida elegidos a la vida roja del equipo del jugador 1.
+P2_APPLYREDHPP2,Also Apply To P2's Red Health,Aplicar también a la vida roja de J2
+P2_APPLYREDHPP2D,Applies specified HP values to red health of Player 2's team.,Aplica los valores de vida elegidos a la vida roja del equipo del jugador 2.
+P2_HEALTHP1C1,Player 1 Character 1 Health,"Vida de J1, personaje 1"
+P2_HEALTHP1C2,Player 1 Character 2 Health,"Vida de J1, personaje 2"
+P2_HEALTHP1C3,Player 1 Character 3 Health,"Vida de J1, personaje 3"
+P2_HEALTHP2C1,Player 2 Character 1 Health,"Vida de J2, personaje 1"
+P2_HEALTHP2C2,Player 2 Character 2 Health,"Vida de J2, personaje 2"
+P2_HEALTHP2C3,Player 2 Character 3 Health,"Vida de J2, personaje 3"
+P2_HYPERMETER,Hyper Meter,Barra de especiales
+P2_PLAYER1METER,Player 1 Meter,Barra del jugador 1
+P2_P1METER,P1 Meter,Barra J1
+P2_P1METERD,Sets player 1's meter. Every level of meter is 10000.,Ajusta la barra del jugador 1. Cada nivel equivale a 10000.
+P2_PLAYER2METER,Player 2 Meter,Barra del jugador 2
+P2_P2METER,P2 Meter,Barra J2
+P2_P2METERD,Sets player 2's meter. Every level of meter is 10000.,Ajusta la barra del jugador 2. Cada nivel equivale a 10000.
+P2_METERLOCKP1,Lock P1 Meter,Fijar barra J1
+P2_METERLOCKP1D,Locks player 1's meter at the specified value.,Mantiene la barra del jugador 1 en el valor indicado.
+P2_METERLOCKP2,Lock P2 Meter,Fijar barra J2
+P2_METERLOCKP2D,Locks player 2's meter at the specified value.,Mantiene la barra del jugador 2 en el valor indicado.
+P2_JAMMINGBOMB,Jamming Bomb/Reversed Controls,Jamming Bomb / Controles invertidos
+P2_JAMP1C1,Player 1 Character 1,"J1, personaje 1"
+P2_JAMP1C2,Player 1 Character 2,"J1, personaje 2"
+P2_JAMP1C3,Player 1 Character 3,"J1, personaje 3"
+P2_JAMP2C1,Player 2 Character 1,"J2, personaje 1"
+P2_JAMP2C2,Player 2 Character 2,"J2, personaje 2"
+P2_JAMP2C3,Player 2 Character 3,"J2, personaje 3"
+P2_JAMD,"""Reverses controls for this character,\ngiving them the Jamming Bomb effect.\nNote that no VFX is present when using this.""","Invierte los controles del personaje como Jamming Bomb, sin mostrar sus efectos visuales."
+P3_CHARACTER,Character,Personaje
+P3_REMEMBER,"""Remember! These Parameters will only take\neffect in training mode.""",Estos ajustes solo se aplican en el modo Entrenamiento.
+P3_FRANK,Frank West,Frank West
+P3_FRANKLEVEL,Frank West's Level,Nivel de Frank West
+P3_FRANKLEVELD,"""Sets Frank West's level. His Prestige Points will be\nset to the lowest amount required for that level.""",Fija el nivel de Frank West y deja sus puntos de prestigio en el mínimo de ese nivel.
+P3_MRWRIGHT,Phoenix Wright,Phoenix Wright
+P3_MRWRIGHTEVIDENCE,Mr. Wright's Evidence,Pruebas de Phoenix Wright
+P3_MRWRIGHTEVIDENCE1,Evidence Slot 1,Prueba 1
+P3_MRWRIGHTEVIDENCE2,Evidence Slot 2,Prueba 2
+P3_MRWRIGHTEVIDENCE3,Evidence Slot 3,Prueba 3
+P3_MRWRIGHTEVIDENCED,Sets Mr. Wright's Evidence for this slot.,Elige la prueba de esta ranura.
+P3_MRWRIGHTLOCKEVIDENCE,Lock Evidence,Fijar pruebas
+P3_MRWRIGHTLOCKEVIDENCED,"""Prevents the selected Evidence from being discarded when\nrestarting Training Mode, exiting Turnabout Mode, and discarding.""","Conserva las pruebas elegidas al reiniciar, al salir de Turnabout o al descartarlas."
+P3_MRWRIGHTTURNABOUTT,Turnabout Toggle,Modo Turnabout
+P3_MRWRIGHTTURNABOUTTD,"""Activates/Deactivates Turnabout Mode with no time limit, regardless\nof Evidence. Note that the glow isn't present but the\nmode still functions.""",Activa o desactiva Turnabout sin límite de tiempo ni requisitos de pruebas. El brillo no aparece.
+P3_JEAN,Phoenix/Jean,Phoenix / Jean
+P3_JEANDARKPHOENIX,Dark Phoenix Toggle,Activar Fénix Oscura
+P3_JEANDARKPHOENIXD,"Activates Dark Phoenix, regardless of meter and health state.",Activa a Fénix Oscura con cualquier nivel de barra o vida.
+P3_MODOK,MODOK,MODOK
+P3_MODOKLOU,MODOK Level of Understanding,Nivel de comprensión de MODOK
+P3_MODOKLOUD,"""Sets MODOK's level of understanding. The flame on his head\nwon't update until at least 1 LOU point is used.""",Ajusta el nivel de comprensión. La llama cambia cuando usas al menos un punto.
+P3_MODOKLOCKU,Lock Understanding,Fijar comprensión
+P3_MODOKLOCKUD,Keeps MODOK's Level of Understanding at the specified value.,Mantiene el nivel de comprensión de MODOK en el valor indicado.
+P3_DORMAMMU,Dormammu,Dormammu
+P3_DORMAMMUSPELL,Dormammu's Spell Charges,Cargas de hechizos de Dormammu
+P3_DORMAMMUSPELLRED,Power Of The Destructor,Poder del Destructor
+P3_DORMRED,Red,Rojas
+P3_DORMAMMUSPELLREDD,"""Sets Dormammu's Red Charges and locks it.\nSet to 0 for unmodified behavior.""",Fija las cargas rojas de Dormammu. Usa 0 para restaurar el comportamiento habitual.
+P3_DORMAMMUSPELLBLUE,Power Of The Creator,Poder del Creador
+P3_DORMBLUE,Blue,Azules
+P3_DORMAMMUSPELLBLUED,"""Sets Dormammu's Blue Charges and locks it.\nSet to 0 for unmodified behavior.""",Fija las cargas azules de Dormammu. Usa 0 para restaurar el comportamiento habitual.
+P3_DORMAMMUSPELLLOCK,Lock spell charges,Fijar cargas de hechizos
+P3_DORMAMMUSPELLLOCKD,Keeps Dormammu's spell charges at the selected values.,Mantiene las cargas de hechizos de Dormammu en los valores elegidos.
+P3_DEADPOOL,Deadpool,Deadpool
+P3_DEADPOOLTELEPORTCOUNT,Teleport Count,Contador de teletransportes
+P3_DEADPOOLTELEPORTCOUNTD,"""Sets Deadpool's teleport counter. It\nbackfires after 2 successful teleports.""",Ajusta el contador de Deadpool. El teletransporte falla tras dos usos correctos.
+P3_DEADPOOLTELEPORTLOCK,Lock Teleport Count,Fijar contador de teletransportes
+P3_DEADPOOLTELEPORTLOCKD,Keeps Deadpool's teleport counter at the specified value.,Mantiene el contador de Deadpool en el valor indicado.
+P3_WESKER,Wesker,Wesker
+P3_WESKERBREAKGLASSES,Break Glasses,Romper gafas
+P3_WESKERBREAKATSTART,Break Glasses At Training Mode Restart,Romper las gafas al reiniciar
+P3_WESKERBREAKGLASSESD,"""Break Wesker's Glasses if on, destroy Wesker's Glasses\nif they're already broken. This does not restore\nthem if Glasses are off.""",Rompe las gafas de Wesker o las destruye si ya están rotas.
+P3_ETC,Etc.,Otras opciones
+P3_ENDLESSINSTALLS,Endless Install Toggle,Transformaciones ilimitadas
+P3_ENDLESSINSTALLSD,"""Sets and locks the install timers to a\ncrazy high value to keep them going. Note: will only\nwork for default characters and not modded ones at the moment.""",Mantiene activas las transformaciones temporales de los personajes del juego base.
+P4_DATA,Data,Datos
+P4_DATAD,,
+P4_HITSTUNTIMERS,Hitstun Timers,Contadores de aturdimiento
+P4_HITSTUNTIMERSSH,Hitstun Stuff - Click to Show/hide,Ver contadores de aturdimiento
+P4_COLORHITSTUNTEXT,Color hitstun timers,Colorear contadores de aturdimiento
+P4_COLORHITSTUNTEXTD,Applies colors to the hitstun timers.,Muestra los contadores de aturdimiento en color.
+P4_HITSTUNPLAYER,Character,Personaje
+P4_HITSTUNGROUND,Ground,Suelo
+P4_HITSTUNAIR,Air,Aire
+P4_HITSTUNMAXGROUND,Max Ground,Máx. en suelo
+P4_HITSTUNMAXAIR,Max Air,Máx. en aire
+P4_HITSTUNP1C1,P1 Character 1,"J1, personaje 1"
+P4_HITSTUNP1C2,P1 Character 2,"J1, personaje 2"
+P4_HITSTUNP1C3,P1 Character 3,"J1, personaje 3"
+P4_HITSTUNP2C1,P2 Character 1,"J2, personaje 1"
+P4_HITSTUNP2C2,P2 Character 2,"J2, personaje 2"
+P4_HITSTUNP2C3,P2 Character 3,"J2, personaje 3"
+P5_INCOMING,Incoming,Entradas
+P5_INCOMINGW,Experimental! Be Smart about using these.,Opciones experimentales.
+P5_INCOMINGD,"""Be sure to set Life Recovery to Off in the Pause Menu\nfor these to work properly.""",Desactiva la recuperación de vida en el menú de pausa para usar estos ajustes.
+P5_INCOMINGTD,Time Delay(Frames),Retraso (fotogramas)
+P5_INCOMINGFRAMES,Frames Until Death,Fotogramas hasta el KO
+P5_INCOMINGFRAMESD,"""Delays the death on training mode restart by the speciifed\nframes. 60 frames in a second. Try this\nif you want to have a charged action when doing incomings.""",Retrasa el KO tras reiniciar. Un segundo son 60 fotogramas. Puedes usarlo para cargar una acción antes de la entrada.
+P5_INCOMINGKOPOSX,Position of KO: X,Posición X del KO
+P5_INCOMINGKOPOSXD,Sets horizotnal position of the character before they die.,Fija la posición horizontal del personaje antes del KO.
+P5_INCOMINGKOPOSY,Position of KO: Y,Posición Y del KO
+P5_INCOMINGKOPOSYD,Sets vertical position of the character before they die.,Fija la posición vertical del personaje antes del KO.
+P5_INCOMINGSYNCP1SPOS,Sync to P1 Start Position,Usar posición inicial de J1
+P5_INCOMINGSYNCP2SPOS,Sync to P2 Start Position,Usar posición inicial de J2
+P5_INCOMINGDEATHPOSPRESETS,Death Position Presets,Posiciones de KO predefinidas
+P5_INCOMINGPOSCENTER,Center,Centro
+P5_INCOMINGPOSLCORNER,Left Corner,Esquina izquierda
+P5_INCOMINGPOSRCORNER,Right Corner,Esquina derecha
+P5_KOACTIVECHARACTERP1,KO Player 1's Active Character At Training Mode Restart,KO al personaje activo de J1 al reiniciar
+P5_KOACTIVECHARACTERP1D,Sets Player 1's character to die upon Training Mode restart.,Derrota al personaje activo del jugador 1 al reiniciar.
+P5_KOACTIVECHARACTERP2,KO Player 2's Active Character At Training Mode Restart,KO al personaje activo de J2 al reiniciar
+P5_KOACTIVECHARACTERP2D,Sets Player 2's character to die upon Training Mode restart.,Derrota al personaje activo del jugador 2 al reiniciar.
+P5_KOTOGGLES,KO Toggles,KO por personaje
+P5_KOTOGGLEP1C1,Player 1 C1,"J1, personaje 1"
+P5_KOTOGGLEP1C2,Player 1 C2,"J1, personaje 2"
+P5_KOTOGGLEP1C3,Player 1 C3,"J1, personaje 3"
+P5_KOTOGGLEP2C1,Player 2 C1,"J2, personaje 1"
+P5_KOTOGGLEP2C2,Player 2 C2,"J2, personaje 2"
+P5_KOTOGGLEP2C3,Player 2 C3,"J2, personaje 3"
+P3_EVIDENCE1,Nothing,Nada
+P3_EVIDENCE2,Photo,Foto
+P3_EVIDENCE3,Watch,Reloj
+P3_EVIDENCE4,Vase,Jarrón
+P3_EVIDENCE5,Folder,Carpeta
+P3_EVIDENCE6,Phone,Teléfono
+P3_EVIDENCE7,Knife,Cuchillo
+P3_EVIDENCE8,Sunglasses,Gafas de sol
+P3_EVIDENCE9,Beer,Cerveza
+P3_EVIDENCEA,Bonsai,Bonsái
+P3_EVIDENCEB,Doll,Muñeca
+P3_EVIDENCEC,Figurine,Figurita
+P3_EVIDENCED,Plunger,Desatascador
+P3_EVIDENCEE,Chicken,Pollo
+UI_LANGUAGE,Language,Idioma
+UI_LANGUAGE_SAVE_FAILED,Could not save the language preference.,No se pudo guardar la preferencia de idioma.
+UI_HIDE,Hide window,Ocultar ventana
+UI_VERSION,Version %s,Versión %s
+UI_AUTHOR,2023 - 2025 by Eternal Yoshi,2023 - 2025 por Eternal Yoshi
+UI_THANKS,"Thanks to SanHKHaan, Sheep, Techs, anotak and Gneiss for finding the pointers and memory offsets, and to Ermmaccer for the original UMVC3Hook.","Gracias a SanHKHaan, Sheep, Techs, anotak y Gneiss por encontrar los punteros y desplazamientos de memoria, y a Ermmaccer por el UMVC3Hook original."
+UI_TRAINING_ONLY,Use this tool only in Training Mode.,Esta herramienta está destinada exclusivamente al modo Entrenamiento.
+UI_OK,OK,Aceptar
+UI_CANCEL,Cancel,Cancelar
+UI_GAME_SPEED_ENABLE,Enable game speed changes (use at your own risk),Permitir cambios de velocidad del juego (bajo tu responsabilidad)
+UI_GAME_SPEED,Game speed,Velocidad del juego
+UI_LEVEL,Lv,Nivel
+UI_UNDERSTANDING,LOU,Comprensión
+P4_REMAININGHITSTUN,Remaining hitstun,Aturdimiento restante por impacto
+P4_REMAININGBLOCKSTUN,Remaining blockstun,Aturdimiento restante por bloqueo
+P6_RECORDPLAYBACK,Recording,Grabación
+REC_BOTH,Record both,Grabar ambos
+REC_P1,Record P1,Grabar J1
+REC_P2,Record P2,Grabar J2
+REC_STOP,Stop recording,Detener grabación
+REC_PLAY_BOTH,Play both,Reproducir ambos
+REC_PLAY_STOP,Stop playback,Detener reproducción
+REC_PLAY_P1,Play P1,Reproducir J1
+REC_PLAY_STOP_P1,Stop P1 playback,Detener reproducción J1
+REC_PLAY_P2,Play P2,Reproducir J2
+REC_PLAY_STOP_P2,Stop P2 playback,Detener reproducción J2
+REC_SAVE_P1,Save P1 recording,Guardar grabación J1
+REC_SAVE_P2,Save P2 recording,Guardar grabación J2
+REC_LOAD_P1,Load recording into P1,Cargar grabación en J1
+REC_LOAD_P2,Load recording into P2,Cargar grabación en J2
+REC_SLOT_TITLE,Recording slot,Ranura de grabación
+REC_SLOT,Slot,Ranura
+REC_TOO_LARGE,The recording file is too large.,El archivo de grabación es demasiado grande.
+REC_INVALID,The recording file is invalid. Its size must be a multiple of 550 bytes.,El archivo de grabación no es válido. Su tamaño debe ser múltiplo de 550 bytes.
+UI_WINDOW_CLASS,Could not register the tool window class.,No se pudo registrar la clase de ventana del mod.
+UI_WINDOW_CREATE,Could not create the tool window.,No se pudo crear la ventana del mod.
+TEAM_TAB,Teams,Equipos
+TEAM_INFO,"Edit fighters and assists, then apply the changes in Training.","Cambia los personajes y asistencias, y aplica los cambios en Entrenamiento."
+TEAM_LOG,Log: %s,Registro de diagnóstico: %s
+TEAM_NO_LOG,Could not create the team editor log.,No se pudo crear el registro del editor de equipos.
+TEAM_NEED_MATCH,Enter a Training match with the standard roster to edit teams.,Entra en una partida de Entrenamiento con la plantilla estándar para editar equipos.
+TEAM_APPLY,Apply and reload,Aplicar y recargar
+TEAM_RESET_DRAFT,Reset draft,Restablecer selección
+TEAM_PLAYER1,Player 1,Jugador 1
+TEAM_PLAYER2,Player 2,Jugador 2
+TEAM_SLOT,Slot %d,Puesto %d
+TEAM_ASSIST,Assist,Asistencia
+TEAM_UNKNOWN_ASSIST,Unknown,Desconocida
+TEAM_ALPHA,Alpha,Alfa
+TEAM_BETA,Beta,Beta
+TEAM_GAMMA,Gamma,Gamma
+TEAM_UNAVAILABLE,Team reload is unavailable for this executable.,Este ejecutable no admite recargar equipos.
+TEAM_STOP_RECORDING,Stop recording or playback before editing teams.,Detén la grabación o reproducción antes de editar los equipos.
+TEAM_WAIT,Wait until both teams are ready and the round has started.,Espera a que ambos equipos estén listos y empiece el combate.
+TEAM_DISTINCT,Choose three different fighters per team.,Elige tres personajes distintos por equipo.
+TEAM_NO_CHANGE,"Change a fighter, assist, or team order first.","Cambia primero un personaje, una asistencia o el orden."
+TEAM_RELOAD_WAIT,Reload requested. Waiting for the game to load the teams...,Esperando a que el juego recargue los equipos…
+TEAM_MATCH_ENDED,The Training match ended. Changes are no longer pending.,La partida de Entrenamiento terminó y se descartaron los cambios pendientes.
+TEAM_NEW_MATCH,New Training match detected.,Se ha detectado una partida nueva de Entrenamiento.
+TEAM_VERIFIED,Loaded fighters and assists match the requested teams.,Los personajes y asistencias coinciden con los equipos elegidos.
+TEAM_VERIFY_FIGHTER,Assists verified. Check the new fighter in-game.,Asistencias comprobadas. Revisa el nuevo personaje en el juego.
+TEAM_ORIGINAL_RESTORED,The game kept the original fighters and assists. Original selection restored.,El juego conservó los personajes y asistencias. Se restauró la selección original.
+TEAM_RELOAD_TIMEOUT,The Training reload did not finish. See the log.,La recarga de Entrenamiento no terminó. Consulta el registro.
+TEAM_NO_CONFIRMATION,Could not confirm the loaded teams. See the log.,No se pudieron confirmar los equipos cargados. Consulta el registro.
+TEAM_RESTORE_OK,Could not apply the change. Original settings restored.,No se pudo aplicar el cambio. Se restauraron los ajustes originales.
+QUICK_TITLE,Quick Training,Entrenamiento rápido
+QUICK_STAGE,Stage,Escenario
+QUICK_START,Start Training,Iniciar entrenamiento
+QUICK_RETURN_MAIN,Return to the main menu to start a Training match.,Vuelve al menú principal para iniciar una partida de Entrenamiento.
+QUICK_COMPLETE_TEAMS,Choose three different fighters and an assist for each team.,Elige tres personajes distintos por equipo y una asistencia para cada personaje.
+PRESET_DIR_MISSING,Could not find the Quick Training preset folder.,No se encontró la carpeta de equipos guardados.
+PRESET_DIR_OPEN,Could not open the Quick Training preset folder.,No se pudo abrir la carpeta de equipos guardados.
+PRESET_READ_FAILED,Some Quick Training presets could not be read.,No se pudieron leer algunos equipos guardados.
+PRESET_LIST_FAILED,Could not list all Quick Training presets.,No se pudieron listar todos los equipos guardados.
+PRESET_EDIT_FAILED,Could not open the preset folder for editing. Try again.,No se pudo abrir la carpeta para editar. Inténtalo de nuevo.
+PRESET_CHANGED,The saved preset changed. Load it again to edit it.,El equipo guardado cambió. Cárgalo de nuevo para editarlo.
+PRESET_NAME_INVALID,Enter a preset name without ##.,Escribe un nombre para el equipo sin ##.
+PRESET_SAVE_FAILED,Could not save the preset.,No se pudo guardar el equipo.
+PRESET_RENAME_RESTORED,Could not rename the preset. The original was kept.,No se pudo cambiar el nombre. Se conservó el equipo original.
+PRESET_UPDATED,Preset updated.,Equipo actualizado.
+PRESET_SAVED,Preset saved.,Equipo guardado.
+PRESET_DELETE_FAILED,Could not delete the preset.,No se pudo borrar el equipo.
+PRESET_DELETED,Preset deleted.,Equipo borrado.
+PRESET_LOADED,Preset loaded.,Equipo cargado.
+PRESET_LOAD,Load preset,Cargar equipo guardado
+PRESET_NAME,Preset name,Nombre del equipo
+PRESET_SAVE_NEW,Save as new,Guardar como nuevo
+PRESET_SAVE,Save preset,Guardar equipo
+PRESET_UPDATE,Update preset,Actualizar equipo
+PRESET_DELETE,Delete preset,Borrar equipo
+PRESET_DELETE_TITLE,Delete team preset,Borrar equipo guardado
+PRESET_DELETE_QUESTION,"Delete ""%s""?",¿Borrar «%s»?
+PRESET_DELETE_CONFIRM,Delete,Borrar
+PAD_DISABLED,Disabled,Desactivado
+PAD_VIEW,View / Select,Vista / Select
+PAD_MENU,Menu / Start,Menú / Start
+PAD_L3,L3 (left stick click),L3 (pulsar palanca izquierda)
+PAD_R3,R3 (right stick click),R3 (pulsar palanca derecha)
+PAD_A,A / Cross,A / Cruz
+PAD_B,B / Circle,B / Círculo
+PAD_X,X / Square,X / Cuadrado
+PAD_Y,Y / Triangle,Y / Triángulo
+PAD_UP,D-pad up,Cruceta arriba
+PAD_DOWN,D-pad down,Cruceta abajo
+PAD_LEFT,D-pad left,Cruceta izquierda
+PAD_RIGHT,D-pad right,Cruceta derecha
+PAD_TOOLS,Tool window,Ventana del mod
+PAD_RESET,Reset Training,Reiniciar entrenamiento
+PAD_SAVE_FAILED,Could not save controller bindings.,No se pudieron guardar los atajos del mando.
+PAD_HEADER,Controller shortcuts,Atajos del mando
+PAD_CONNECTED,Controller %lu connected,Mando %lu conectado
+PAD_NOT_CONNECTED,No XInput controller detected.,No se detectó ningún mando XInput.
+PAD_CORNER_HINT,Hold left or right and press Reset Training to put P2 in that corner.,Mantén izquierda o derecha y pulsa Reiniciar entrenamiento para colocar a J2 en esa esquina.
+UI_SPANISH,Español,Español
+UI_ENGLISH,English,English
+PAD_LB,LB / L1,LB / L1
+PAD_RB,RB / R1,RB / R1
+PAD_LT,LT / L2,LT / L2
+PAD_RT,RT / R2,RT / R2
+PRESET_RENAME_DUPLICATE,Could not remove the original preset. Both names are still available.,No se pudo borrar el equipo original. Ambos nombres siguen disponibles.
+PRESET_DUPLICATE,A preset with that name already exists.,Ya existe un equipo con ese nombre.
+TEAM_RESTORE_FAILED,Could not restore the original settings. Start a fresh Training match.,No se pudieron restaurar los ajustes originales. Inicia una nueva partida de Entrenamiento.
+UI_HP_P1C1,P1C1 HP %,Vida J1 P1 %
+UI_HP_P1C2,P1C2 HP %,Vida J1 P2 %
+UI_HP_P1C3,P1C3 HP %,Vida J1 P3 %
+UI_HP_P2C1,P2C1 HP %,Vida J2 P1 %
+UI_HP_P2C2,P2C2 HP %,Vida J2 P2 %
+UI_HP_P2C3,P2C3 HP %,Vida J2 P3 %
+STAGE_01,Bonne Wonderland,Parque de los Bonne
+STAGE_02,Kattlelox Island,Isla Kattlelox
+STAGE_03,Demon Village Redux,Aldea de los Demonios (alternativa)
+STAGE_04,Demon Village,Aldea de los Demonios
+STAGE_05,Chaos at Tricell,Caos en Tricell
+STAGE_06,Tricell Laboratory,Laboratorio de Tricell
+STAGE_07,Days of Future Past,Días del futuro pasado
+STAGE_08,Metro City,Metro City
+STAGE_09,City That Never Sleeps,La ciudad que nunca duerme
+STAGE_10,Daily Bugle,Daily Bugle
+STAGE_11,Asgard: Sea of Space,Asgard: Mar del Espacio
+STAGE_12,Asgard,Asgard
+STAGE_13,S.H.I.E.L.D. Air Show,Exhibición aérea de S.H.I.E.L.D.
+STAGE_14,S.H.I.E.L.D. Helicarrier,Helitransporte de S.H.I.E.L.D.
+STAGE_15,Shadowland,Shadowland
+STAGE_16,Hand Hideout,Guarida de La Mano
+STAGE_17,Danger Room,Sala de Peligro
+STAGE_18,Training Room,Sala de Entrenamiento

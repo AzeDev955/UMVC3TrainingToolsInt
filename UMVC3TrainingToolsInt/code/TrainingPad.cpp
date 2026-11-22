@@ -1,5 +1,6 @@
 #include "../pch.h"
 #include "TrainingPad.h"
+#include "Localizer.h"
 #include "../gui/imgui/imgui.h"
 
 #include <Xinput.h>
@@ -10,6 +11,8 @@
 #include <filesystem>
 #include <mutex>
 #include <string>
+
+using Localizer::UiText;
 
 namespace
 {
@@ -27,23 +30,23 @@ namespace
 	};
 
 	constexpr Button Buttons[]{
-		{ 0, "Disabled", ImGuiKey_None },
-		{ XINPUT_GAMEPAD_BACK, "View / Select", ImGuiKey_GamepadBack },
-		{ XINPUT_GAMEPAD_START, "Menu / Start", ImGuiKey_GamepadStart },
-		{ XINPUT_GAMEPAD_LEFT_THUMB, "L3 (left stick click)", ImGuiKey_GamepadL3 },
-		{ XINPUT_GAMEPAD_RIGHT_THUMB, "R3 (right stick click)", ImGuiKey_GamepadR3 },
-		{ XINPUT_GAMEPAD_LEFT_SHOULDER, "LB / L1", ImGuiKey_GamepadL1 },
-		{ XINPUT_GAMEPAD_RIGHT_SHOULDER, "RB / R1", ImGuiKey_GamepadR1 },
-		{ LeftTrigger, "LT / L2", ImGuiKey_GamepadL2 },
-		{ RightTrigger, "RT / R2", ImGuiKey_GamepadR2 },
-		{ XINPUT_GAMEPAD_A, "A / Cross", ImGuiKey_GamepadFaceDown },
-		{ XINPUT_GAMEPAD_B, "B / Circle", ImGuiKey_GamepadFaceRight },
-		{ XINPUT_GAMEPAD_X, "X / Square", ImGuiKey_GamepadFaceLeft },
-		{ XINPUT_GAMEPAD_Y, "Y / Triangle", ImGuiKey_GamepadFaceUp },
-		{ XINPUT_GAMEPAD_DPAD_UP, "D-pad up", ImGuiKey_GamepadDpadUp },
-		{ XINPUT_GAMEPAD_DPAD_DOWN, "D-pad down", ImGuiKey_GamepadDpadDown },
-		{ XINPUT_GAMEPAD_DPAD_LEFT, "D-pad left", ImGuiKey_GamepadDpadLeft },
-		{ XINPUT_GAMEPAD_DPAD_RIGHT, "D-pad right", ImGuiKey_GamepadDpadRight }
+		{ 0, "PAD_DISABLED", ImGuiKey_None },
+		{ XINPUT_GAMEPAD_BACK, "PAD_VIEW", ImGuiKey_GamepadBack },
+		{ XINPUT_GAMEPAD_START, "PAD_MENU", ImGuiKey_GamepadStart },
+		{ XINPUT_GAMEPAD_LEFT_THUMB, "PAD_L3", ImGuiKey_GamepadL3 },
+		{ XINPUT_GAMEPAD_RIGHT_THUMB, "PAD_R3", ImGuiKey_GamepadR3 },
+		{ XINPUT_GAMEPAD_LEFT_SHOULDER, "PAD_LB", ImGuiKey_GamepadL1 },
+		{ XINPUT_GAMEPAD_RIGHT_SHOULDER, "PAD_RB", ImGuiKey_GamepadR1 },
+		{ LeftTrigger, "PAD_LT", ImGuiKey_GamepadL2 },
+		{ RightTrigger, "PAD_RT", ImGuiKey_GamepadR2 },
+		{ XINPUT_GAMEPAD_A, "PAD_A", ImGuiKey_GamepadFaceDown },
+		{ XINPUT_GAMEPAD_B, "PAD_B", ImGuiKey_GamepadFaceRight },
+		{ XINPUT_GAMEPAD_X, "PAD_X", ImGuiKey_GamepadFaceLeft },
+		{ XINPUT_GAMEPAD_Y, "PAD_Y", ImGuiKey_GamepadFaceUp },
+		{ XINPUT_GAMEPAD_DPAD_UP, "PAD_UP", ImGuiKey_GamepadDpadUp },
+		{ XINPUT_GAMEPAD_DPAD_DOWN, "PAD_DOWN", ImGuiKey_GamepadDpadDown },
+		{ XINPUT_GAMEPAD_DPAD_LEFT, "PAD_LEFT", ImGuiKey_GamepadDpadLeft },
+		{ XINPUT_GAMEPAD_DPAD_RIGHT, "PAD_RIGHT", ImGuiKey_GamepadDpadRight }
 	};
 
 	struct Controller
@@ -82,9 +85,9 @@ namespace
 	GetState getState = nullptr;
 	std::filesystem::path configPath;
 	std::array bindings{
-		Binding{ L"QuickTraining", "Quick Training", XINPUT_GAMEPAD_BACK },
-		Binding{ L"Tools", "Tool window", XINPUT_GAMEPAD_RIGHT_THUMB },
-		Binding{ L"ResetTraining", "Reset Training", XINPUT_GAMEPAD_LEFT_THUMB }
+		Binding{ L"QuickTraining", "QUICK_TITLE", XINPUT_GAMEPAD_BACK },
+		Binding{ L"Tools", "PAD_TOOLS", XINPUT_GAMEPAD_RIGHT_THUMB },
+		Binding{ L"ResetTraining", "PAD_RESET", XINPUT_GAMEPAD_LEFT_THUMB }
 	};
 	const char* settingsStatus = "";
 
@@ -202,7 +205,7 @@ namespace
 
 	void DrawBinding(Binding& binding)
 	{
-		if (!ImGui::BeginCombo(binding.label, FindButton(binding.button)->label))
+		if (!ImGui::BeginCombo(Localizer::UiLabel(binding.label).c_str(), UiText(FindButton(binding.button)->label)))
 			return;
 
 		for (const auto& button : Buttons)
@@ -211,7 +214,7 @@ namespace
 			const bool duplicate = button.mask != 0 && std::any_of(bindings.begin(), bindings.end(),
 				[&](const Binding& other) { return &binding != &other && other.button == button.mask; });
 			ImGui::BeginDisabled(duplicate);
-			if (ImGui::Selectable(button.label, selected) && !selected)
+			if (ImGui::Selectable(Localizer::UiLabel(button.label).c_str(), selected) && !selected)
 			{
 				if (SaveBinding(binding, button.mask))
 				{
@@ -219,7 +222,7 @@ namespace
 					settingsStatus = "";
 				}
 				else
-					settingsStatus = "Could not save controller bindings.";
+					settingsStatus = "PAD_SAVE_FAILED";
 			}
 			ImGui::EndDisabled();
 			if (selected)
@@ -386,18 +389,18 @@ void TrainingPad::UpdateNavigation(bool focused)
 
 void TrainingPad::DrawSettings()
 {
-	if (!ImGui::CollapsingHeader("Controller shortcuts"))
+	if (!ImGui::CollapsingHeader(Localizer::UiLabel("PAD_HEADER").c_str()))
 		return;
 
 	if (activeController < XUSER_MAX_COUNT)
-		ImGui::Text("Controller %lu connected", activeController + 1);
+		ImGui::Text(UiText("PAD_CONNECTED"), activeController + 1);
 	else
-		ImGui::TextDisabled("No XInput controller detected.");
+		ImGui::TextDisabled("%s", UiText("PAD_NOT_CONNECTED"));
 
 	for (auto& binding : bindings)
 		DrawBinding(binding);
 	if (bindings[static_cast<size_t>(Shortcut::ResetTraining)].button)
-		ImGui::TextWrapped("Hold left or right and press Reset Training to put P2 in that corner.");
+		ImGui::TextWrapped("%s", UiText("PAD_CORNER_HINT"));
 	if (*settingsStatus)
-		ImGui::TextWrapped("%s", settingsStatus);
+		ImGui::TextWrapped("%s", UiText(settingsStatus));
 }
