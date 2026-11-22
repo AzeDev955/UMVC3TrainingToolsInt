@@ -17,6 +17,6 @@ namespace TrainingShortcut
 
 	void Initialize(IDirect3DDevice9* toolDevice);
 	bool TakeSetupRequest(bool controllerPressed);
-	bool StartTraining(const TeamPicks& picks, int stage);
+	bool StartTraining(const TeamPicks& picks, int stage, bool direct);
 	void DispatchTraining();
 }

@@ -36,6 +36,30 @@ namespace
 	constexpr uintptr_t UiSelectedStage = 0x5934;
 	constexpr uintptr_t BattleSettingsAddress = 0x140d50e58;
 	constexpr uintptr_t BattleModeOffset = 0x34c;
+	constexpr uintptr_t BattleStageOffset = 0x358;
+	constexpr uintptr_t StageSelectionIds = 0x140b400c0;
+	constexpr uintptr_t ResolveStageAddress = 0x1402bc5d0;
+	constexpr uintptr_t SetBattleModeAddress = 0x14024e050;
+	constexpr uintptr_t SetBattleStageAddress = 0x1401cf670;
+	constexpr uintptr_t SetUiStageAddress = 0x14024e140;
+	constexpr uintptr_t SceneManagerAddress = 0x140e17a80;
+	constexpr uintptr_t SceneManagerTable = 0x140b090c0;
+	constexpr uintptr_t QueueSceneAddress = 0x140545350;
+	constexpr uintptr_t QueueSceneSlot = 0x50;
+	constexpr uintptr_t QueuedSceneOffset = 0x7040;
+	struct StageScene
+	{
+		int archive;
+		uintptr_t type;
+	};
+	// Native stage scene descriptors. Each is a child of aAction, which in turn is a child of aGame.
+	constexpr StageScene StageScenes[]{
+		{ 0, 0x140d50790 }, { 2, 0x140d507c8 }, { 3, 0x140d50810 }, { 4, 0x140d50848 },
+		{ 5, 0x140d50888 }, { 6, 0x140d508d0 }, { 7, 0x140d50910 }, { 9, 0x140d50950 },
+		{ 10, 0x140d50990 }, { 11, 0x140d509d8 }, { 100, 0x140d50a10 }, { 102, 0x140d50a58 },
+		{ 103, 0x140d50a98 }, { 104, 0x140d50ae0 }, { 105, 0x140d50b28 }, { 106, 0x140d50b60 },
+		{ 107, 0x140d50ba8 }, { 109, 0x140d50be0 }, { 110, 0x140d50c28 }
+	};
 	constexpr unsigned EndSceneSlot = 42;
 	constexpr int MainMenuPhase = 1;
 	constexpr int OfflineMenuPhase = 2;
@@ -61,6 +85,9 @@ namespace
 	using FinishSelection = void (*)(void*, int);
 	using StageConfirm = void (*)(void*);
 	using EndScene = HRESULT (WINAPI*)(IDirect3DDevice9*);
+	using SetGameValue = void (*)(uintptr_t, int);
+	using ResolveStage = int (*)(uintptr_t, int);
+	using QueueScene = void (*)(uintptr_t, uintptr_t);
 
 	MenuUpdate originalMainUpdate = nullptr;
 	MenuUpdate originalOfflineUpdate = nullptr;
@@ -74,6 +101,7 @@ namespace
 	bool keyWasDown = false;
 	bool firstGameEndScene = true;
 	bool launchQueued = false; // Tool thread only.
+	bool directLaunchSupported = false;
 	bool firstSelectUpdate = true; // Game thread only.
 
 	enum class Request
@@ -82,7 +110,9 @@ namespace
 		OpenOffline,
 		OpenTraining,
 		StageTeams,
-		ConfirmStage
+		ConfirmStage,
+		OpenDirect,
+		WaitForBattle
 	};
 
 	std::atomic<Request> request{ Request::None };
@@ -93,6 +123,8 @@ namespace
 	std::mutex picksMutex;
 	TrainingShortcut::TeamPicks queuedPicks{};
 	int queuedStage = 0;
+	bool queuedDirect = false; // Tool thread only.
+	std::atomic<int> directBattleStage{ -1 };
 	std::array<int, 2> lastSelectPhases{ -1, -1 };
 	int lastStageState = -1;
 	std::array<int, 3> lastLaunchProgress{ -1, -1, -1 };
@@ -123,6 +155,13 @@ namespace
 		uintptr_t pointer = 0;
 		Read(address, pointer);
 		return pointer;
+	}
+
+	template <size_t Size>
+	bool MatchesGameCode(uintptr_t address, const std::array<uint8_t, Size>& signature)
+	{
+		std::array<uint8_t, Size> bytes{};
+		return Read(GameAddress(address), bytes) && bytes == signature;
 	}
 
 	uintptr_t GameUi()
@@ -175,6 +214,10 @@ namespace
 				waitingFor = "Offline menu";
 			else if (step == Request::ConfirmStage)
 				waitingFor = "stage selection";
+			else if (step == Request::OpenDirect)
+				waitingFor = "main menu for direct launch";
+			else if (step == Request::WaitForBattle)
+				waitingFor = "direct battle scene";
 			char message[96];
 			std::snprintf(message, sizeof(message), "Start Training timed out waiting for %s", waitingFor);
 			TrainingTeamEditor::TraceQuickShortcut(message);
@@ -229,15 +272,65 @@ namespace
 		return true;
 	}
 
+	bool QueueDirectTraining()
+	{
+		const auto sceneManager = PointerAt(GameAddress(SceneManagerAddress));
+		const auto gameUi = GameUi();
+		const auto settings = PointerAt(GameAddress(BattleSettingsAddress));
+		uintptr_t pendingScene = 0;
+		int stage = 0;
+		TrainingShortcut::TeamPicks picks{};
+		{
+			const std::lock_guard lock(picksMutex);
+			picks = queuedPicks;
+			stage = queuedStage;
+		}
+		int nativeStage = -1;
+		// The game's stage table starts with Random. The preset stores the index after it.
+		if (!gameUi || !settings || PointerAt(sceneManager) != GameAddress(SceneManagerTable)
+			|| !Read(sceneManager + QueuedSceneOffset, pendingScene) || pendingScene
+			|| !Read(GameAddress(StageSelectionIds) + (stage + 1) * sizeof(int), nativeStage)
+			|| nativeStage != stage)
+			return false;
+
+		const int archiveStage = reinterpret_cast<ResolveStage>(GameAddress(ResolveStageAddress))(gameUi, nativeStage);
+	const auto scene = std::find_if(std::begin(StageScenes), std::end(StageScenes), [archiveStage](const StageScene& entry)
+	{
+		return entry.archive == archiveStage;
+	});
+	if (scene == std::end(StageScenes) || !TrainingTeamEditor::PrepareQuickMatch(picks))
+			return false;
+
+	// Request the stage itself so the scene manager constructs the entire battle hierarchy.
+		reinterpret_cast<SetGameValue>(GameAddress(SetBattleModeAddress))(settings, TrainingMode);
+		reinterpret_cast<SetGameValue>(GameAddress(SetBattleStageAddress))(settings, archiveStage);
+		reinterpret_cast<SetGameValue>(GameAddress(SetUiStageAddress))(gameUi, archiveStage);
+		directBattleStage.store(archiveStage);
+		request.store(Request::WaitForBattle);
+	reinterpret_cast<QueueScene>(GameAddress(QueueSceneAddress))(sceneManager, GameAddress(scene->type));
+		char message[128];
+		std::snprintf(message, sizeof(message), "direct Training scene queued (selector ID=%d archive ID=%03d)",
+			stage, archiveStage);
+		TrainingTeamEditor::TraceQuickShortcut(message);
+		return true;
+	}
+
 	void MainUpdate(void* object)
 	{
 		originalMainUpdate(object);
-		if (!Pending(Request::OpenOffline))
+		const auto step = request.load();
+		if ((step != Request::OpenOffline && step != Request::OpenDirect) || !Pending(step))
 			return;
 		const auto menu = ReadMenu();
 		if (menu.address == reinterpret_cast<uintptr_t>(object)
 			&& IsReadyMenu(menu, MainMenuPhase, MainMenuTable))
 		{
+			if (step == Request::OpenDirect)
+			{
+				if (QueueDirectTraining())
+					return;
+				TrainingTeamEditor::TraceQuickShortcut("direct launch preflight failed; using native menus");
+			}
 			TrainingTeamEditor::TraceQuickShortcut("confirming Offline in the main menu");
 			const bool confirmed = ConfirmEntry(menu, OfflineEntry, OfflineCommand);
 			TrainingTeamEditor::TraceQuickShortcut(confirmed ? "Offline native transition requested" : "Offline confirmation rejected");
@@ -580,6 +673,18 @@ namespace
 bool TrainingShortcut::TakeSetupRequest(bool controllerPressed)
 {
 	const auto step = request.load();
+	if (step == Request::WaitForBattle && Pending(step))
+	{
+		const auto settings = PointerAt(GameAddress(BattleSettingsAddress));
+		int stage = -1;
+		if (settings && Read(settings + BattleStageOffset, stage) && stage == directBattleStage.load()
+			&& TrainingTeamEditor::IsTrainingPlayable())
+		{
+			Request expected = Request::WaitForBattle;
+			if (request.compare_exchange_strong(expected, Request::None))
+				TrainingTeamEditor::TraceQuickShortcut("direct Training match playable with expected stage");
+		}
+	}
 	if (step != Request::None && Pending(step) && step == Request::StageTeams)
 	{
 		const auto menu = ReadMenu();
@@ -617,7 +722,7 @@ bool TrainingShortcut::TakeSetupRequest(bool controllerPressed)
 	return fromButton;
 }
 
-bool TrainingShortcut::StartTraining(const TeamPicks& picks, int stage)
+bool TrainingShortcut::StartTraining(const TeamPicks& picks, int stage, bool direct)
 {
 	TrainingTeamEditor::TraceQuickShortcut("Start Training pressed");
 	if (stage < 0 || stage >= StageCount || launchQueued || !shortcutAvailable.load() || request.load() != Request::None
@@ -631,6 +736,9 @@ bool TrainingShortcut::StartTraining(const TeamPicks& picks, int stage)
 		queuedPicks = picks;
 		queuedStage = stage;
 	}
+	queuedDirect = direct && directLaunchSupported;
+	if (direct && !queuedDirect)
+		TrainingTeamEditor::TraceQuickShortcut("direct launch unavailable for this executable; using native menus");
 	launchQueued = true;
 	TrainingTeamEditor::TraceQuickShortcut("Start Training queued; waiting for the tool window to hide");
 	return true;
@@ -652,7 +760,7 @@ void TrainingShortcut::DispatchTraining()
 	lastLaunchProgress = { -1, -1, -1 };
 	requestDeadline.store(GetTickCount64() + TransitionTimeoutMs);
 	TrainingTeamEditor::TraceQuickShortcut("tool renderer idle; waiting for main menu update");
-	request.store(Request::OpenOffline);
+	request.store(queuedDirect ? Request::OpenDirect : Request::OpenOffline);
 }
 
 void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
@@ -675,6 +783,12 @@ void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
 		TrainingTeamEditor::TraceQuickShortcut("native menu signature mismatch");
 		return;
 	}
+	directLaunchSupported = PointerAt(GameAddress(SceneManagerTable) + QueueSceneSlot) == GameAddress(QueueSceneAddress)
+		&& MatchesGameCode(QueueSceneAddress, std::array<uint8_t, 8>{ 0x48, 0x89, 0x91, 0x40, 0x70, 0x00, 0x00, 0xc3 })
+		&& MatchesGameCode(SetBattleModeAddress, std::array<uint8_t, 8>{ 0x48, 0x89, 0x5c, 0x24, 0x08, 0x57, 0x48, 0x83 })
+		&& MatchesGameCode(SetBattleStageAddress, std::array<uint8_t, 7>{ 0x89, 0x91, 0x58, 0x03, 0x00, 0x00, 0xc3 })
+		&& MatchesGameCode(SetUiStageAddress, std::array<uint8_t, 7>{ 0x89, 0x91, 0x34, 0x59, 0x00, 0x00, 0xc3 })
+		&& MatchesGameCode(ResolveStageAddress, std::array<uint8_t, 8>{ 0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x08, 0x48 });
 
 	const auto initialized = MH_Initialize();
 	if (initialized != MH_OK && initialized != MH_ERROR_ALREADY_INITIALIZED)

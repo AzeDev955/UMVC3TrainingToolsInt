@@ -20,6 +20,7 @@ namespace TrainingTeamEditor
 	void TraceQuickShortcut(const char* event);
 	void TraceQuickSelection(int p1Phase, int p2Phase, int mode);
 	bool PrepareQuickMatch(const TrainingShortcut::TeamPicks& picks);
+	bool IsTrainingPlayable();
 	void Draw();
 	bool Update();
 	void RequestTrainingRestart(std::optional<XPositions> positions = std::nullopt);
