@@ -38,11 +38,11 @@ namespace
 	constexpr const char* AssistTypes[] = { "TEAM_ALPHA", "TEAM_BETA", "TEAM_GAMMA" };
 	// Native stage-selector IDs, in the order used by the game's stage resolver.
 	constexpr std::array<const char*, TrainingShortcut::StageCount> Stages{
-		"STAGE_01", "STAGE_02", "STAGE_03", "STAGE_04",
-		"STAGE_05", "STAGE_06", "STAGE_07", "STAGE_08",
-		"STAGE_09", "STAGE_10", "STAGE_11", "STAGE_12",
-		"STAGE_13", "STAGE_14", "STAGE_15", "STAGE_16",
-		"STAGE_17", "STAGE_18"
+		"Bonne Wonderland", "Kattlelox Island", "Demon Village Redux", "Demon Village",
+		"Chaos at Tricell", "Tricell Laboratory", "Days of Future Past", "Metro City",
+		"City That Never Sleeps", "Daily Bugle", "Asgard: Sea of Space", "Asgard",
+		"S.H.I.E.L.D. Air Show", "S.H.I.E.L.D. Helicarrier", "Shadowland", "Hand Hideout",
+		"Danger Room", "Training Room"
 	};
 	constexpr int FightingStep = 5;
 	constexpr int RestartStep = 12;
@@ -243,6 +243,7 @@ namespace
 		{ 3, 28, 0 }, { 4, 27, 0 }, { 5, 26, 0 }
 	}};
 	int quickStage = 0; // Bonne Wonderland.
+	bool quickDirectLaunch = false;
 	const char* quickSetupStatus = "";
 	constexpr size_t PresetNameCapacity = 64;
 	constexpr int PresetVersion = 1;
@@ -969,11 +970,9 @@ bool TrainingTeamEditor::DrawQuickSetup()
 {
 	ImGui::SeparatorText(UiText("QUICK_TITLE"));
 	DrawQuickPresets();
-	std::array<const char*, Stages.size()> stageLabels{};
-	for (size_t stage = 0; stage < Stages.size(); ++stage)
-		stageLabels[stage] = UiText(Stages[stage]);
-	ImGui::Combo(UiText("QUICK_STAGE"), &quickStage, stageLabels.data(), static_cast<int>(stageLabels.size()));
+	ImGui::Combo(UiText("QUICK_STAGE"), &quickStage, Stages.data(), static_cast<int>(Stages.size()));
 	DrawTeamDraft(quickDraft);
+	ImGui::Checkbox(UiText("QUICK_DIRECT_LAUNCH"), &quickDirectLaunch);
 	if (*quickSetupStatus)
 		ImGui::TextWrapped("%s", UiText(quickSetupStatus));
 
@@ -985,7 +984,7 @@ bool TrainingTeamEditor::DrawQuickSetup()
 			TraceQuickShortcut("Start Training rejected: invalid fighter or assist selection");
 			quickSetupStatus = "QUICK_COMPLETE_TEAMS";
 		}
-		else if (TrainingShortcut::StartTraining(picks, quickStage))
+		else if (TrainingShortcut::StartTraining(picks, quickStage, quickDirectLaunch))
 			return true;
 		else
 			quickSetupStatus = "QUICK_RETURN_MAIN";
@@ -1080,10 +1079,9 @@ void TrainingTeamEditor::TraceQuickSelection(int p1Phase, int p2Phase, int mode)
 bool TrainingTeamEditor::PrepareQuickMatch(const TrainingShortcut::TeamPicks& picks)
 {
 	const auto settings = PointerAt(_addr(0x140d50e58));
-	int mode = 0;
 	Teams current{};
-	if (!settings || !Read(settings + 0x34c, mode) || mode != 5
-		|| !Read(settings + SelectionOffset, current) || !ValidPicks(picks))
+	// The selector and the direct launch check their respective game states before staging teams.
+	if (!settings || !Read(settings + SelectionOffset, current) || !ValidPicks(picks))
 	{
 		Log(0, "quick training: selection preflight failed");
 		return false;
@@ -1107,6 +1105,14 @@ bool TrainingTeamEditor::PrepareQuickMatch(const TrainingShortcut::TeamPicks& pi
 	}
 	LogTeams(0, "quick training: teams staged", proposed);
 	return true;
+}
+
+bool TrainingTeamEditor::IsTrainingPlayable()
+{
+	Match match{};
+	ActionState action{};
+	LoadedTeams loaded{};
+	return ReadMatch(match) && ReadAction(match.action, action) && IsFighting(action) && ReadLoadedTeams(loaded);
 }
 
 void TrainingTeamEditor::InitializeLog(HMODULE module)
