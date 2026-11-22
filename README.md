@@ -3,6 +3,35 @@ This tool adds more options to practice and setup situations that weren't presen
 The recent build uses Mid 2025 revisions Imgui & Sokol with a D3D11 backend.
 The public build has 5 pages.
 
+[English](#windows-installation) · [Español](#instalación-en-windows)
+
+## Disclaimer / Nota de autoría
+
+This fork builds on the original UMVC3TrainingToolsInt mod by EternalYoshi. Credit for the original mod goes to EternalYoshi and the contributors to that project. [Original repository](https://github.com/EternalYoshi/UMVC3TrainingToolsInt)
+
+Este fork parte del mod original UMVC3TrainingToolsInt, creado por EternalYoshi. El crédito por el mod original corresponde a EternalYoshi y a quienes contribuyeron a ese proyecto. [Repositorio original](https://github.com/EternalYoshi/UMVC3TrainingToolsInt)
+
+## Windows installation
+
+1. Close the game and run `UMVC3TrainingToolsInt-Setup.exe`.
+2. The installer searches your Steam libraries for UMVC3. If it cannot find the game, choose **Browse** and select `umvc3.exe`.
+3. Choose **English** or **Español**, click **Install**, and launch the game.
+
+Press **F4** in the game's main menu to open Quick Training. Press **F5** to open or close the tools window.
+
+### Controller
+
+- **View / Select** opens Quick Training from the main menu. **R3** opens the tools window.
+- Use the D-pad or left stick to navigate and **A / Cross** to confirm. **B / Circle** closes the active dropdown. With no dropdown open, it closes the mod menu and returns focus to the game.
+- **L3** restarts the Training match. To change or disable this shortcut, use **Reset Training** under **Controller shortcuts**. You can also reassign or disable the shortcuts for opening either window there. Changes are saved in `UMVC3TrainingToolsInt.ini`.
+- The mod detects XInput controllers, including controllers that Steam Input presents as XInput devices.
+
+The mod writes its log to `logs/UMVC3TrainingToolsInt-Teams.log` inside the game's folder. On startup it moves the log from older versions into `logs/`.
+
+The installer includes Ultimate ASI Loader x64 for installations without `dinput8.dll`. When it updates mod files, it backs up the originals in `UMVC3TrainingToolsInt-Backups`.
+
+To build the installer from a mod release ZIP, run `.\installer\Build-Installer.ps1 -ModZip path-to-zip` in PowerShell.
+
 ## Instalación en Windows
 
 **F5** abre o cierra la ventana de herramientas durante el juego.
