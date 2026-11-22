@@ -1,4 +1,8 @@
-# Verificación local del mod
+# Flujo de trabajo
+
+Al terminar una rama de trabajo, fusiónala en `dev`. Abre las pull requests con `dev` como rama de origen y `main` como rama de destino.
+
+## Verificación local del mod
 
 Cuando se prepare un cambio del mod para probarlo, ejecuta `installer/Build-Release.ps1`. El script compila Release x64, actualiza `installer/UMVC3TrainingToolsInt-Setup.exe` y comprueba que el `.asi` incluido coincide con la compilación. Entrega el enlace al instalador actualizado e indica qué se ha verificado en el juego.
 
