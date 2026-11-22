@@ -21,7 +21,7 @@ Press **F4** in the game's main menu to open Quick Training. Press **F5** to ope
 
 In Quick Training, enter a name and choose **Save preset** to keep both teams, their assists and order, and the selected stage. Choose a saved setup from **Load preset**, then press **Start Training**. Presets are stored in `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
 
-When MVC3 starts, the mod checks GitHub Releases in the background. If a newer stable version has an installer, you can open the download in your browser. Close MVC3 before running the downloaded installer.
+When MVC3 starts, the mod checks GitHub Releases in the background. If you accept an update, it downloads and verifies the installer, closes MVC3, installs the update and relaunches the game. Windows may ask for administrator permission if the game folder is protected. Install v0.9.3 manually once to enable this flow on older installations.
 
 ### Controller
 
@@ -47,7 +47,7 @@ To compile and verify an installer directly from the source checkout, run `.\ins
 
 En Quick Training, escribe un nombre y pulsa **Save preset** para guardar ambos equipos, su orden, las asistencias y el escenario. Elige una configuración en **Load preset** y pulsa **Start Training**. Los presets se guardan en `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
 
-Al iniciar MVC3, el mod consulta GitHub Releases en segundo plano. Si hay una versión estable más reciente con instalador, puedes abrir la descarga en el navegador. Cierra MVC3 antes de ejecutar el instalador descargado.
+Al iniciar MVC3, el mod consulta GitHub Releases en segundo plano. Al aceptar una actualización, descarga y verifica el instalador, cierra MVC3, instala la versión y vuelve a abrir el juego. Windows puede pedir permiso de administrador si la carpeta del juego está protegida. Instala la v0.9.3 manualmente una vez para habilitar este flujo desde versiones anteriores.
 
 ### Mando
 
