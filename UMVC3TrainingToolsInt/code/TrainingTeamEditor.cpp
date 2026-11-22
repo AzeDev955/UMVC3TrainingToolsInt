@@ -38,11 +38,11 @@ namespace
 	constexpr const char* AssistTypes[] = { "TEAM_ALPHA", "TEAM_BETA", "TEAM_GAMMA" };
 	// Native stage-selector IDs, in the order used by the game's stage resolver.
 	constexpr std::array<const char*, TrainingShortcut::StageCount> Stages{
-		"STAGE_01", "STAGE_02", "STAGE_03", "STAGE_04",
-		"STAGE_05", "STAGE_06", "STAGE_07", "STAGE_08",
-		"STAGE_09", "STAGE_10", "STAGE_11", "STAGE_12",
-		"STAGE_13", "STAGE_14", "STAGE_15", "STAGE_16",
-		"STAGE_17", "STAGE_18"
+		"Bonne Wonderland", "Kattlelox Island", "Demon Village Redux", "Demon Village",
+		"Chaos at Tricell", "Tricell Laboratory", "Days of Future Past", "Metro City",
+		"City That Never Sleeps", "Daily Bugle", "Asgard: Sea of Space", "Asgard",
+		"S.H.I.E.L.D. Air Show", "S.H.I.E.L.D. Helicarrier", "Shadowland", "Hand Hideout",
+		"Danger Room", "Training Room"
 	};
 	constexpr int FightingStep = 5;
 	constexpr int RestartStep = 12;
@@ -969,10 +969,7 @@ bool TrainingTeamEditor::DrawQuickSetup()
 {
 	ImGui::SeparatorText(UiText("QUICK_TITLE"));
 	DrawQuickPresets();
-	std::array<const char*, Stages.size()> stageLabels{};
-	for (size_t stage = 0; stage < Stages.size(); ++stage)
-		stageLabels[stage] = UiText(Stages[stage]);
-	ImGui::Combo(UiText("QUICK_STAGE"), &quickStage, stageLabels.data(), static_cast<int>(stageLabels.size()));
+	ImGui::Combo(UiText("QUICK_STAGE"), &quickStage, Stages.data(), static_cast<int>(Stages.size()));
 	DrawTeamDraft(quickDraft);
 	if (*quickSetupStatus)
 		ImGui::TextWrapped("%s", UiText(quickSetupStatus));
