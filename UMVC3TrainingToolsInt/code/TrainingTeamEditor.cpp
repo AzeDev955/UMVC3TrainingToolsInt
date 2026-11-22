@@ -246,6 +246,7 @@ namespace
 	bool logAvailable = false;
 	bool logInTemp = false;
 	unsigned attemptCount = 0;
+	std::atomic<unsigned> watchedAttempt{ 0 };
 	std::atomic<ULONGLONG> lastEditorUpdate{ 0 };
 
 	bool Log(unsigned attempt, const char* format, ...)
@@ -627,7 +628,7 @@ namespace
 		// Sample independently so a blocked render loop cannot hide the restart state.
 		const auto attempt = static_cast<unsigned>(reinterpret_cast<uintptr_t>(argument));
 		const auto started = GetTickCount64();
-		for (;;)
+		while (watchedAttempt.load() == attempt)
 		{
 			const auto lastUpdate = lastEditorUpdate.load();
 			const auto now = GetTickCount64();
@@ -830,11 +831,17 @@ namespace
 		status = "Reload requested. Waiting for the game to load the teams...";
 		if (logAvailable)
 		{
+			lastEditorUpdate.store(trial.started);
+			watchedAttempt.store(attempt);
 			const HANDLE watcher = CreateThread(nullptr, 0, WatchRestart, reinterpret_cast<void*>(static_cast<uintptr_t>(attempt)), 0, nullptr);
 			if (watcher)
 				CloseHandle(watcher);
 			else
-				Log(attempt, "could not start restart watcher error=%lu", GetLastError());
+			{
+				const auto error = GetLastError();
+				watchedAttempt.store(0);
+				Log(attempt, "could not start restart watcher error=%lu", error);
+			}
 		}
 	}
 }
@@ -1004,15 +1011,19 @@ void TrainingTeamEditor::InitializeLog(HMODULE module)
 
 bool TrainingTeamEditor::Update()
 {
-	lastEditorUpdate.store(GetTickCount64());
 	if (!trial.pending && !trial.uncertain)
 		return true;
+	const auto now = GetTickCount64();
+	if (trial.pending)
+		lastEditorUpdate.store(now);
+	const bool timedOut = now - trial.started >= RestartTimeoutMs;
 
 	Match match;
 	if (!ReadMatch(match))
 	{
-		if (trial.pending && GetTickCount64() - trial.started < RestartTimeoutMs)
+		if (trial.pending && !timedOut)
 			return false;
+		watchedAttempt.store(0);
 		Log(trial.number, "editor ended trial: Training match unavailable");
 		trial = {};
 		draftFrom = {};
@@ -1030,10 +1041,10 @@ bool TrainingTeamEditor::Update()
 	}
 
 	ActionState action;
-	LoadedTeams loaded{};
-	const bool haveLoaded = ReadLoadedTeams(loaded);
 	const bool finishedRestart = ReadAction(match.action, action) && IsFighting(action);
 	const bool sameMatch = match.settings == trial.before.settings && match.action == trial.before.action;
+	LoadedTeams loaded{};
+	const bool haveLoaded = ((sameMatch && finishedRestart) || timedOut) && ReadLoadedTeams(loaded);
 	if (sameMatch && finishedRestart && haveLoaded && loaded != trial.originalFighters
 		&& SameSelection(match.teams, trial.proposed))
 	{
@@ -1052,6 +1063,7 @@ bool TrainingTeamEditor::Update()
 			if (action.flags & trial.reloadFlags)
 				ClearReloadFlags(match.action, trial.reloadFlags);
 			trial.pending = false;
+			watchedAttempt.store(0);
 			pendingRestart = { match.settings, match.action };
 			Log(trial.number, "editor completed trial: assists verified, all class IDs verifiable=%d", known);
 			LogLoadedTeams(trial.number, "confirmed loaded", loaded);
@@ -1061,10 +1073,11 @@ bool TrainingTeamEditor::Update()
 		}
 	}
 
-	if (GetTickCount64() - trial.started < RestartTimeoutMs)
+	if (!timedOut)
 		return false;
 
 	trial.pending = false;
+	watchedAttempt.store(0);
 	Log(trial.number, "editor timed out: fighting=%d step=%d next=%d restart=%u flags=0x%08X loaded_readable=%d loaded_unchanged=%d",
 		finishedRestart, action.step, action.nextStep, action.restart, action.flags,
 		haveLoaded, haveLoaded && loaded == trial.originalFighters);
