@@ -220,6 +220,7 @@ namespace
 		uintptr_t settings{};
 		uintptr_t action{};
 		ULONGLONG readyAt{};
+		std::optional<TrainingTeamEditor::XPositions> positions;
 	};
 
 	Match draftFrom;
@@ -870,13 +871,13 @@ bool TrainingTeamEditor::DrawQuickSetup()
 	return ImGui::Button("Cancel");
 }
 
-void TrainingTeamEditor::RequestTrainingRestart()
+void TrainingTeamEditor::RequestTrainingRestart(std::optional<XPositions> positions)
 {
 	Match match{};
 	ActionState action{};
 	if (ReadMatch(match) && ReadAction(match.action, action) && IsFighting(action) && !(action.flags & ReloadTeams)
 		&& Write(match.action + RestartOffset, RestartTraining))
-		pendingRestart = { match.settings, match.action };
+		pendingRestart = { match.settings, match.action, 0, positions };
 }
 
 void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
@@ -893,7 +894,7 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 	}
 	if (pendingRestart.action != match.action || pendingRestart.settings != match.settings)
 		pendingRestart = {};
-	if (watchNativeRestart && action.restart)
+	if (watchNativeRestart && action.restart && !pendingRestart.action)
 		pendingRestart = { match.settings, match.action };
 	if (!pendingRestart.action)
 		return;
@@ -922,14 +923,15 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 		|| !P2Character1Data || !P2Character2Data || !P2Character3Data)
 		return;
 
+	const auto positions = pendingRestart.positions.value_or(XPositions{ p1Pos, p2Pos });
 	pendingRestart = {};
 	RestartWithChanges();
-	*(float*)(P1Character1Data + 0x50) = p1Pos;
-	*(float*)(P1Character2Data + 0x50) = p1Pos;
-	*(float*)(P1Character3Data + 0x50) = p1Pos;
-	*(float*)(P2Character1Data + 0x50) = p2Pos;
-	*(float*)(P2Character2Data + 0x50) = p2Pos;
-	*(float*)(P2Character3Data + 0x50) = p2Pos;
+	*(float*)(P1Character1Data + 0x50) = positions.p1;
+	*(float*)(P1Character2Data + 0x50) = positions.p1;
+	*(float*)(P1Character3Data + 0x50) = positions.p1;
+	*(float*)(P2Character1Data + 0x50) = positions.p2;
+	*(float*)(P2Character2Data + 0x50) = positions.p2;
+	*(float*)(P2Character3Data + 0x50) = positions.p2;
 	SetIndividualCharacterHealth();
 	SetMeters();
 	GetDebugData();

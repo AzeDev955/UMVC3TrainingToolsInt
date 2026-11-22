@@ -322,11 +322,8 @@ static void TheExtraOptionsTab()
 		}
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSLEFT", DefaultLanguage)).c_str()))
 		{
-
-			p1Pos = -750.0f;
-			p2Pos = -800.0f;
-
-
+			p1Pos = TrainingTeamEditor::LeftCorner.p1;
+			p2Pos = TrainingTeamEditor::LeftCorner.p2;
 		}
 		ImGui::SameLine();
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSLEFT2P", DefaultLanguage)).c_str()))
@@ -340,11 +337,8 @@ static void TheExtraOptionsTab()
 
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSRIGHT", DefaultLanguage)).c_str()))
 		{
-
-			p1Pos = 750.0f;
-			p2Pos = 800.0f;
-
-
+			p1Pos = TrainingTeamEditor::RightCorner.p1;
+			p2Pos = TrainingTeamEditor::RightCorner.p2;
 		}
 		ImGui::SameLine();
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSRIGHT2P", DefaultLanguage)).c_str()))
@@ -5042,7 +5036,15 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 
 		const bool runTrainingUpdates = TrainingTeamEditor::Update();
 		if (gameFocused && !focusTool && runTrainingUpdates && TrainingPad::Pressed(TrainingPad::Shortcut::ResetTraining))
-			TrainingTeamEditor::RequestTrainingRestart();
+		{
+			const auto direction = TrainingPad::HeldHorizontalDirection();
+			std::optional<TrainingTeamEditor::XPositions> positions;
+			if (direction == TrainingPad::HorizontalDirection::Left)
+				positions = TrainingTeamEditor::LeftCorner;
+			else if (direction == TrainingPad::HorizontalDirection::Right)
+				positions = TrainingTeamEditor::RightCorner;
+			TrainingTeamEditor::RequestTrainingRestart(positions);
+		}
 		if (runTrainingUpdates)
 			TrainingTeamEditor::UpdateTrainingRestart(ShowToolWindow && !quickTrainingSetup);
 		if (!recordingHookInstalled && sAction && runTrainingUpdates) {
