@@ -225,6 +225,36 @@ namespace
 		return opened;
 	}
 
+	bool OpenLog(const std::filesystem::path& directory, const std::filesystem::path& previous)
+	{
+		std::error_code error;
+		std::filesystem::create_directories(directory, error);
+		if (error)
+			return false;
+
+		logPath = directory / LogName;
+		DWORD moveError = ERROR_SUCCESS;
+		if (std::filesystem::is_regular_file(previous, error) && !MoveFileW(previous.c_str(), logPath.c_str()))
+		{
+			moveError = GetLastError();
+			if (moveError == ERROR_ALREADY_EXISTS || moveError == ERROR_FILE_EXISTS)
+			{
+				SYSTEMTIME time{};
+				GetLocalTime(&time);
+				wchar_t archiveName[96];
+				swprintf_s(archiveName, L"UMVC3TrainingToolsInt-Teams-legacy-%04d%02d%02d-%02d%02d%02d-%lu.log",
+					time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, GetCurrentProcessId());
+				const auto archive = directory / archiveName;
+				moveError = MoveFileW(previous.c_str(), archive.c_str()) ? ERROR_SUCCESS : GetLastError();
+			}
+		}
+
+		const bool opened = Log(0, "Team editor with native reload started (pid=%lu)", GetCurrentProcessId());
+		if (opened && moveError != ERROR_SUCCESS && moveError != ERROR_FILE_NOT_FOUND)
+			Log(0, "Could not move the previous log (Windows error %lu)", moveError);
+		return opened;
+	}
+
 	template <typename T>
 	bool Read(uintptr_t address, T& value)
 	{
@@ -685,16 +715,17 @@ void TrainingTeamEditor::InitializeLog(HMODULE module)
 	wchar_t modulePath[MAX_PATH]{};
 	const auto length = GetModuleFileNameW(module, modulePath, MAX_PATH);
 	if (length && length < MAX_PATH)
-		logPath = std::filesystem::path(modulePath).parent_path() / LogName;
-	logAvailable = Log(0, "Team editor with native reload started (pid=%lu)", GetCurrentProcessId());
+	{
+		const auto root = std::filesystem::path(modulePath).parent_path();
+		logAvailable = OpenLog(root / L"logs", root / LogName);
+	}
 	if (!logAvailable)
 	{
 		std::error_code error;
 		const auto temp = std::filesystem::temp_directory_path(error);
 		if (!error)
 		{
-			logPath = temp / LogName;
-			logAvailable = Log(0, "Team editor with native reload started in TEMP (pid=%lu)", GetCurrentProcessId());
+			logAvailable = OpenLog(temp / L"UMVC3TrainingToolsInt" / L"logs", temp / LogName);
 			logInTemp = logAvailable;
 		}
 	}
@@ -797,7 +828,8 @@ void TrainingTeamEditor::Draw()
 
 	ImGui::TextWrapped("Edit fighters and assists, then apply the changes in Training.");
 	if (logAvailable)
-		ImGui::TextDisabled("%s", logInTemp ? "Log: %TEMP%\\UMVC3TrainingToolsInt-Teams.log" : "Log: UMVC3TrainingToolsInt-Teams.log");
+		ImGui::TextDisabled("%s", logInTemp ? "Log: %TEMP%\\UMVC3TrainingToolsInt\\logs\\UMVC3TrainingToolsInt-Teams.log"
+			: "Log: logs\\UMVC3TrainingToolsInt-Teams.log");
 	else
 		ImGui::TextDisabled("Could not create the team editor log.");
 	if (*status)

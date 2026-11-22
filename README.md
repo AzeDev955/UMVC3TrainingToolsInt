@@ -5,6 +5,10 @@ The public build has 5 pages.
 
 ## Instalación en Windows
 
+**F5** abre o cierra la ventana de herramientas durante el juego.
+
+El mod guarda su registro en `logs/UMVC3TrainingToolsInt-Teams.log`, dentro de la carpeta del juego. Al iniciar, traslada el registro de las versiones anteriores a `logs/`.
+
 Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busca UMVC3 en las bibliotecas de Steam. Si hace falta, usa **Examinar** para seleccionar `umvc3.exe`. Puedes cambiar el idioma del instalador entre español e inglés. Pulsa **Instalar** y luego abre el juego. Desde el menú principal, **F4** abre Quick Training.
 
 El instalador incluye Ultimate ASI Loader x64 para instalaciones sin `dinput8.dll`. Si actualiza archivos del mod, guarda los originales en la carpeta `UMVC3TrainingToolsInt-Backups`.

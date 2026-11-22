@@ -4989,7 +4989,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			continue;
 		}
 
-		const bool toolToggleDown = (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
+		const bool toolToggleDown = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
 
 		if (toolToggleDown && !toolToggleWasDown) {
 			ShowToolWindow = !ShowToolWindow;
@@ -5063,7 +5063,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			ImGui::End();
 		}
 		else {
-			ImGui::Begin("Press F2 to toggle this window.", &ShowToolWindow, flags);
+			ImGui::Begin("Press F5 to toggle this window.", &ShowToolWindow, flags);
 			//ImGui::ShowMetricsWindow();
 
 			// 
