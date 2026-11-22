@@ -66,7 +66,8 @@ try {
     $resources += ('/resource:{0},{1}Ultimate ASI Loader.txt' -f $LoaderLicense, $licensePrefix)
 
     [void] [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($outputPath))
-    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$outputPath" @resources (Join-Path $PSScriptRoot 'Installer.cs')
+    $sources = @((Join-Path $PSScriptRoot 'Installer.cs'), (Join-Path $PSScriptRoot 'UpdateInstaller.cs'))
+    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$outputPath" @resources @sources
     if ($LASTEXITCODE -ne 0) { throw "Falló la compilación del instalador." }
     Get-Item -LiteralPath $outputPath
 }

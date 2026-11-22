@@ -4876,7 +4876,6 @@ static void TheRecordPlaybackTab()
 DWORD WINAPI MainThread(LPVOID lpReserved)
 {
 	TrainingTeamEditor::InitializeLog(static_cast<HMODULE>(lpReserved));
-	ReleaseUpdate::CheckAtStartup();
 
 
 	//Waits a hot moment to ensure that the game's own D3D device is active before doing anything.
@@ -4971,6 +4970,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	ImGui_ImplDX9_Init(D3ddev);
 	TrainingShortcut::Initialize(D3ddev);
 	TrainingPad::Initialize(static_cast<HMODULE>(lpReserved), hWnd);
+	ReleaseUpdate::CheckAtStartup(hWnd);
 	bool quickTrainingSetup = false;
 	bool recordingHookInstalled = false;
 	HWND returnToGame = nullptr;
