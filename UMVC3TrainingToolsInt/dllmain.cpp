@@ -5071,8 +5071,24 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			ShowToolWindow = false;
 		}
 
+		const auto& style = ImGui::GetStyle();
+		const float footerHeight = (std::max)(style.WindowMinSize.y,
+			ImGui::GetTextLineHeight() + 2.0f * style.WindowPadding.y);
+		float contentHeight = wndSize.y;
+		if (ShowToolWindow && contentHeight >= footerHeight + style.WindowMinSize.y)
+		{
+			contentHeight -= footerHeight;
+			ImGui::SetNextWindowPos(ImVec2(0, contentHeight));
+			ImGui::SetNextWindowSize(ImVec2(wndSize.x, footerHeight));
+			if (ImGui::Begin("##TrainingToolsVersion", nullptr, ImGuiWindowFlags_NoDecoration |
+				ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
+				ImGuiWindowFlags_NoFocusOnAppearing))
+				ImGui::TextDisabled(UiText("UI_VERSION"), ReleaseUpdate::VersionTag);
+			ImGui::End();
+		}
+
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
-		ImGui::SetNextWindowSize(wndSize, ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(wndSize.x, contentHeight), ImGuiCond_Always);
 		if (focusTool)
 			ImGui::SetNextWindowFocus();
 
