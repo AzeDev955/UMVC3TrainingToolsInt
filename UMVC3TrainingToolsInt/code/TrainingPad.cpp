@@ -334,6 +334,21 @@ bool TrainingPad::Pressed(Shortcut shortcut)
 	return false;
 }
 
+TrainingPad::HorizontalDirection TrainingPad::HeldHorizontalDirection()
+{
+	if (activeController >= XUSER_MAX_COUNT)
+		return HorizontalDirection::Neutral;
+	const auto& controller = controllers[activeController];
+	const DWORD directions = controller.held & ~suppressedButton;
+	const bool left = (directions & XINPUT_GAMEPAD_DPAD_LEFT)
+		|| controller.pad.sThumbLX < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
+	const bool right = (directions & XINPUT_GAMEPAD_DPAD_RIGHT)
+		|| controller.pad.sThumbLX > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
+	if (left == right)
+		return HorizontalDirection::Neutral;
+	return left ? HorizontalDirection::Left : HorizontalDirection::Right;
+}
+
 void TrainingPad::UpdateNavigation(bool focused)
 {
 	auto& io = ImGui::GetIO();
@@ -373,6 +388,8 @@ void TrainingPad::DrawSettings()
 
 	for (auto& binding : bindings)
 		DrawBinding(binding);
+	if (bindings[static_cast<size_t>(Shortcut::ResetTraining)].button)
+		ImGui::TextWrapped("Hold left or right and press Reset Training to put P2 in that corner.");
 	if (*settingsStatus)
 		ImGui::TextWrapped("%s", settingsStatus);
 }

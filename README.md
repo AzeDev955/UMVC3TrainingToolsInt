@@ -28,6 +28,7 @@ When MVC3 starts, the mod checks GitHub Releases in the background. If a newer s
 - **View / Select** opens Quick Training from the main menu. **R3** opens the tools window.
 - Use the D-pad or left stick to navigate and **A / Cross** to confirm. **B / Circle** closes the active dropdown. With no dropdown open, it closes the mod menu and returns focus to the game.
 - **L3** restarts Training using the P1 and P2 X positions configured under **Extra → Positioning**, even with the mod menu closed. To change or disable this shortcut, use **Reset Training** under **Controller shortcuts**. You can also reassign or disable the shortcuts for opening either window there. Changes are saved in `UMVC3TrainingToolsInt.ini`.
+- Hold **left** or **right** on the D-pad or left stick while pressing **Reset Training** to put P2 in that corner for this reset.
 - The mod detects XInput controllers, including controllers that Steam Input presents as XInput devices.
 
 While the mod menu has focus, it captures XInput so controller navigation does not affect the game. Release the controls after closing the menu to resume play.
@@ -53,6 +54,7 @@ Al iniciar MVC3, el mod consulta GitHub Releases en segundo plano. Si hay una ve
 - **View / Select** abre Quick Training en el menú principal y **R3** abre la ventana de herramientas.
 - Usa la cruceta o el stick izquierdo para navegar y **A / ✕** para confirmar. **B / ○** cierra el desplegable activo o, si no hay ninguno, cierra el menú del mod y devuelve el foco al juego.
 - **L3** reinicia Training con las posiciones X de P1 y P2 configuradas en **Extra → Positioning**, incluso con el menú del mod cerrado. Puedes cambiar o desactivar cada atajo en **Controller shortcuts**. Los cambios se guardan en `UMVC3TrainingToolsInt.ini`.
+- Mantén **izquierda** o **derecha** en la cruceta o el stick izquierdo al pulsar **Reset Training** para colocar a P2 en esa esquina en ese intento.
 - El mod detecta mandos XInput, incluidos los que Steam Input presenta como XInput.
 
 Mientras el menú del mod tiene el foco, captura la entrada XInput del mando. Al cerrar el menú, suelta los controles para volver a jugar.
