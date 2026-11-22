@@ -38,7 +38,7 @@ try {
         '/p:Configuration=Release', '/p:Platform=x64', "/p:OutDir=$bin\", "/p:IntDir=$obj\"
     )
     if ($PlatformToolset) { $buildArgs += "/p:PlatformToolset=$PlatformToolset" }
-    & $msbuild @buildArgs
+    & $msbuild @buildArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación Release x64.' }
 
     $asi = Join-Path $bin 'UMVC3TrainingToolsInt.asi'
