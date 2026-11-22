@@ -29,8 +29,8 @@ When MVC3 starts, the mod checks GitHub Releases in the background. If you accep
 
 - **View / Select** opens Quick Training from the main menu. **R3** opens the tools window.
 - Use the D-pad or left stick to navigate and **A / Cross** to confirm. **B / Circle** closes the active dropdown. With no dropdown open, it closes the mod menu and returns focus to the game.
-- **L3** restarts Training using the P1 and P2 X positions configured under **Extra → Positioning**, even with the mod menu closed. To change or disable this shortcut, use **Reset Training** under **Controller shortcuts**. You can also reassign or disable the shortcuts for opening either window there. Changes are saved in `UMVC3TrainingToolsInt.ini`.
-- Hold **left** or **right** on the D-pad or left stick while pressing **Reset Training** to put P2 in that corner for this reset.
+- **L3** restarts Training, even with the mod menu closed. Without a direction, it repeats the last directional reset of the session. Before the first directional reset, it uses the positions configured under **Extra → Positioning**. You can reassign or disable the shortcuts in **Controller shortcuts**. Bindings are saved in `UMVC3TrainingToolsInt.ini`.
+- Hold a direction on the D-pad or left stick while pressing **Reset Training**. **Left/right** puts P2 in that corner, **down** returns both players to the center, and **up** swaps their reset positions.
 - The mod detects XInput controllers, including controllers that Steam Input presents as XInput devices.
 
 While the mod menu has focus, it captures XInput so controller navigation does not affect the game. Release the controls after closing the menu to resume play.
@@ -57,8 +57,8 @@ Al iniciar MVC3, el mod consulta GitHub Releases en segundo plano. Al aceptar un
 
 - **View / Select** abre Quick Training en el menú principal y **R3** abre la ventana de herramientas.
 - Usa la cruceta o el stick izquierdo para navegar y **A / ✕** para confirmar. **B / ○** cierra el desplegable activo o, si no hay ninguno, cierra el menú del mod y devuelve el foco al juego.
-- **L3** reinicia Training con las posiciones X de P1 y P2 configuradas en **Extra → Positioning**, incluso con el menú del mod cerrado. Puedes cambiar o desactivar cada atajo en **Controller shortcuts**. Los cambios se guardan en `UMVC3TrainingToolsInt.ini`.
-- Mantén **izquierda** o **derecha** en la cruceta o el stick izquierdo al pulsar **Reset Training** para colocar a P2 en esa esquina en ese intento.
+- **L3** reinicia Entrenamiento, incluso con el menú del mod cerrado. Sin dirección, repite el último reinicio direccional de la sesión. Antes del primero, usa las posiciones de **Extra → Posiciones**. Puedes cambiar o desactivar los atajos en **Atajos del mando**. Las asignaciones se guardan en `UMVC3TrainingToolsInt.ini`.
+- Mantén una dirección en la cruceta o el stick izquierdo al pulsar **Reiniciar entrenamiento**. **Izquierda/derecha** coloca a J2 en esa esquina, **abajo** vuelve al centro y **arriba** intercambia las posiciones de reinicio de J1 y J2.
 - El mod detecta mandos XInput, incluidos los que Steam Input presenta como XInput.
 
 Mientras el menú del mod tiene el foco, captura la entrada XInput del mando. Al cerrar el menú, suelta los controles para volver a jugar.

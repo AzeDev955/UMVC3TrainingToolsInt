@@ -993,13 +993,16 @@ bool TrainingTeamEditor::DrawQuickSetup()
 	return ImGui::Button(UiText("UI_CANCEL"));
 }
 
-void TrainingTeamEditor::RequestTrainingRestart(std::optional<XPositions> positions)
+bool TrainingTeamEditor::RequestTrainingRestart(std::optional<XPositions> positions)
 {
 	Match match{};
 	ActionState action{};
-	if (ReadMatch(match) && ReadAction(match.action, action) && IsFighting(action) && !(action.flags & ReloadTeams)
-		&& Write(match.action + RestartOffset, RestartTraining))
-		pendingRestart = { match.settings, match.action, 0, positions };
+	if (!ReadMatch(match) || !ReadAction(match.action, action) || !IsFighting(action) || (action.flags & ReloadTeams)
+		|| !Write(match.action + RestartOffset, RestartTraining))
+		return false;
+
+	pendingRestart = { match.settings, match.action, 0, positions };
+	return true;
 }
 
 void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
