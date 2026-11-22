@@ -4,6 +4,7 @@
 #include "../gui/imgui/imgui.h"
 #include "umvc3menu.h"
 #include "umvc3utils.h"
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -11,6 +12,8 @@
 #include <cstdio>
 #include <cstdint>
 #include <filesystem>
+#include <numeric>
+#include <string_view>
 #include <utility>
 
 namespace
@@ -105,6 +108,21 @@ namespace
 		{ "Doctor Strange", "uDrStrange", { "Daggers of Denak", "Eye of Agamotto", "Bolts of Balthakk" } },
 		{ "Hawkeye", "uHawkEye", { "Quick Shot (Greyhound)", "Trick Shot (Violet Fizz)", "Rag Time Shot (Kamikaze)" } }
 	};
+
+	constexpr auto FighterDisplayOrder = []
+	{
+		std::array<int, std::size(Roster) - 1> ids{};
+		std::iota(ids.begin(), ids.end(), 1);
+		std::sort(ids.begin(), ids.end(), [](int left, int right)
+		{
+			const std::string_view leftName = Roster[left].name;
+			const std::string_view rightName = Roster[right].name;
+			const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; };
+			return std::lexicographical_compare(leftName.begin(), leftName.end(), rightName.begin(), rightName.end(),
+				[lower](char a, char b) { return lower(a) < lower(b); });
+		});
+		return ids;
+	}();
 
 	constexpr uint32_t ClassId(const char* name)
 	{
@@ -473,7 +491,7 @@ namespace
 			const int current = slots[slot].id;
 			if (ImGui::BeginCombo(label, Roster[current].name))
 			{
-				for (int id = 1; id < static_cast<int>(std::size(Roster)); ++id)
+				for (int id : FighterDisplayOrder)
 				{
 					if (ImGui::Selectable(Roster[id].name, id == current))
 						slots[slot].id = id;
