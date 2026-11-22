@@ -1,5 +1,6 @@
 #include "../pch.h"
 #include "TrainingTeamEditor.h"
+#include "Localizer.h"
 
 #include "../gui/imgui/imgui.h"
 #include "umvc3menu.h"
@@ -21,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+using Localizer::UiText;
+
 namespace
 {
 	constexpr int SlotsPerTeam = 3;
@@ -32,14 +35,14 @@ namespace
 	constexpr uintptr_t RestartOffset = 0x118;
 	constexpr uintptr_t CharacterReloadCountdownOffset = 0x1210;
 	constexpr uintptr_t LoadedAssistOffset = 0x2dbc; // mAssistType on the loaded fighter.
-	constexpr const char* AssistTypes[] = { "Alpha", "Beta", "Gamma" };
+	constexpr const char* AssistTypes[] = { "TEAM_ALPHA", "TEAM_BETA", "TEAM_GAMMA" };
 	// Native stage-selector IDs, in the order used by the game's stage resolver.
 	constexpr std::array<const char*, TrainingShortcut::StageCount> Stages{
-		"Bonne Wonderland", "Kattlelox Island", "Demon Village Redux", "Demon Village",
-		"Chaos at Tricell", "Tricell Laboratory", "Days of Future Past", "Metro City",
-		"City That Never Sleeps", "Daily Bugle", "Asgard: Sea of Space", "Asgard",
-		"S.H.I.E.L.D. Air Show", "S.H.I.E.L.D. Helicarrier", "Shadowland", "Hand Hideout",
-		"Danger Room", "Training Room"
+		"STAGE_01", "STAGE_02", "STAGE_03", "STAGE_04",
+		"STAGE_05", "STAGE_06", "STAGE_07", "STAGE_08",
+		"STAGE_09", "STAGE_10", "STAGE_11", "STAGE_12",
+		"STAGE_13", "STAGE_14", "STAGE_15", "STAGE_16",
+		"STAGE_17", "STAGE_18"
 	};
 	constexpr int FightingStep = 5;
 	constexpr int RestartStep = 12;
@@ -478,7 +481,7 @@ namespace
 		if (!length || length >= MAX_PATH)
 		{
 			quickPresetFolder.clear();
-			quickPresetStatus = "Could not find the Quick Training preset folder.";
+			quickPresetStatus = "PRESET_DIR_MISSING";
 			return;
 		}
 		quickPresetFolder = std::filesystem::path(localAppData) / L"UMVC3TrainingToolsInt" / L"QuickTraining";
@@ -486,7 +489,7 @@ namespace
 		std::filesystem::create_directories(quickPresetFolder, error);
 		if (error)
 		{
-			quickPresetStatus = "Could not open the Quick Training preset folder.";
+			quickPresetStatus = "PRESET_DIR_OPEN";
 			return;
 		}
 
@@ -501,10 +504,10 @@ namespace
 			if (ReadPreset(path, preset) && path.filename() == PresetPath(preset.name).filename())
 				quickPresets.push_back(std::move(preset));
 			else
-				quickPresetStatus = "Some Quick Training presets could not be read.";
+				quickPresetStatus = "PRESET_READ_FAILED";
 		}
 		if (error)
-			quickPresetStatus = "Could not list all Quick Training presets.";
+			quickPresetStatus = "PRESET_LIST_FAILED";
 		std::sort(quickPresets.begin(), quickPresets.end(), [](const QuickPreset& left, const QuickPreset& right)
 		{
 			return left.name < right.name;
@@ -524,7 +527,7 @@ namespace
 				FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
 		}
 		if (file == INVALID_HANDLE_VALUE)
-			quickPresetStatus = "Could not open the preset folder for editing. Try again.";
+			quickPresetStatus = "PRESET_EDIT_FAILED";
 		return { file == INVALID_HANDLE_VALUE ? nullptr : file, CloseHandle };
 	}
 
@@ -534,7 +537,7 @@ namespace
 		if (ReadPreset(path, current) && current == *selectedQuickPreset)
 			return true;
 		RefreshQuickPresets();
-		quickPresetStatus = "The saved preset changed. Load it again to edit it.";
+		quickPresetStatus = "PRESET_CHANGED";
 		return false;
 	}
 
@@ -548,13 +551,13 @@ namespace
 			name = {};
 		if (!ValidPresetName(name))
 		{
-			quickPresetStatus = "Enter a preset name without ##.";
+			quickPresetStatus = "PRESET_NAME_INVALID";
 			return;
 		}
 		const QuickPreset preset{ std::string(name), QuickPicks(), quickStage };
 		if (!ValidPicks(preset.picks))
 		{
-			quickPresetStatus = "Choose three different fighters and an assist for each team.";
+			quickPresetStatus = "QUICK_COMPLETE_TEAMS";
 			return;
 		}
 
@@ -571,7 +574,7 @@ namespace
 		wchar_t temporary[MAX_PATH]{};
 		if (!GetTempFileNameW(quickPresetFolder.c_str(), L"QTP", 0, temporary))
 		{
-			quickPresetStatus = "Could not save the preset.";
+			quickPresetStatus = "PRESET_SAVE_FAILED";
 			return;
 		}
 		std::ofstream output(temporary, std::ios::binary);
@@ -586,22 +589,22 @@ namespace
 			{
 				const bool restored = DeleteFileW(path.c_str()) != FALSE;
 				RefreshQuickPresets();
-				quickPresetStatus = restored ? "Could not rename the preset. The original was kept."
-					: "Could not remove the original preset. Both names are still available.";
+				quickPresetStatus = restored ? "PRESET_RENAME_RESTORED"
+					: "PRESET_RENAME_DUPLICATE";
 				return;
 			}
 			selectedQuickPreset = preset;
 			std::snprintf(quickPresetName, sizeof(quickPresetName), "%s", preset.name.c_str());
 			RefreshQuickPresets();
 			if (!*quickPresetStatus)
-				quickPresetStatus = update ? "Preset updated." : "Preset saved.";
+				quickPresetStatus = update ? "PRESET_UPDATED" : "PRESET_SAVED";
 			return;
 		}
 
 		const auto error = output ? GetLastError() : ERROR_WRITE_FAULT;
 		DeleteFileW(temporary);
 		quickPresetStatus = error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS
-			? "A preset with that name already exists." : "Could not save the preset.";
+			? "PRESET_DUPLICATE" : "PRESET_SAVE_FAILED";
 	}
 
 	void DeleteQuickPreset()
@@ -614,20 +617,20 @@ namespace
 			return;
 		if (!DeleteFileW(path.c_str()))
 		{
-			quickPresetStatus = "Could not delete the preset.";
+			quickPresetStatus = "PRESET_DELETE_FAILED";
 			return;
 		}
 		selectedQuickPreset.reset();
 		quickPresetName[0] = '\0';
 		RefreshQuickPresets();
 		if (!*quickPresetStatus)
-			quickPresetStatus = "Preset deleted.";
+			quickPresetStatus = "PRESET_DELETED";
 	}
 
 	void DrawQuickPresets()
 	{
 		ImGui::BeginDisabled(quickPresets.empty());
-		const char* preview = selectedQuickPreset ? selectedQuickPreset->name.c_str() : "Load preset";
+		const char* preview = selectedQuickPreset ? selectedQuickPreset->name.c_str() : UiText("PRESET_LOAD");
 		if (ImGui::BeginCombo("##QuickPreset", preview))
 		{
 			for (const auto& preset : quickPresets)
@@ -641,7 +644,7 @@ namespace
 						quickDraft[slot] = { slot, preset.picks[slot].id, preset.picks[slot].assist };
 					quickStage = preset.stage;
 					quickSetupStatus = "";
-					quickPresetStatus = "Preset loaded.";
+					quickPresetStatus = "PRESET_LOADED";
 				}
 				if (selected)
 					ImGui::SetItemDefaultFocus();
@@ -649,31 +652,31 @@ namespace
 			ImGui::EndCombo();
 		}
 		ImGui::EndDisabled();
-		ImGui::InputTextWithHint("##QuickPresetName", "Preset name", quickPresetName, sizeof(quickPresetName));
-		if (ImGui::Button(selectedQuickPreset ? "Save as new" : "Save preset"))
+		ImGui::InputTextWithHint("##QuickPresetName", UiText("PRESET_NAME"), quickPresetName, sizeof(quickPresetName));
+		if (ImGui::Button(selectedQuickPreset ? UiText("PRESET_SAVE_NEW") : UiText("PRESET_SAVE")))
 			SaveQuickPreset();
 		if (selectedQuickPreset)
 		{
 			ImGui::SameLine();
-			if (ImGui::Button("Update preset"))
+			if (ImGui::Button(UiText("PRESET_UPDATE")))
 				SaveQuickPreset(true);
 			ImGui::SameLine();
-			if (ImGui::Button("Delete preset"))
-				ImGui::OpenPopup("Delete team preset");
+			if (ImGui::Button(UiText("PRESET_DELETE")))
+				ImGui::OpenPopup(Localizer::UiLabel("PRESET_DELETE_TITLE").c_str());
 		}
-		if (ImGui::BeginPopupModal("Delete team preset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::BeginPopupModal(Localizer::UiLabel("PRESET_DELETE_TITLE").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			if (!selectedQuickPreset)
 				ImGui::CloseCurrentPopup();
 			else
 			{
-				ImGui::Text("Delete \"%s\"?", selectedQuickPreset->name.c_str());
-				if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)
+				ImGui::Text(UiText("PRESET_DELETE_QUESTION"), selectedQuickPreset->name.c_str());
+				if (ImGui::Button(UiText("UI_CANCEL")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)
 					|| ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
 					ImGui::CloseCurrentPopup();
 				ImGui::SetItemDefaultFocus();
 				ImGui::SameLine();
-				if (ImGui::Button("Delete"))
+				if (ImGui::Button(UiText("PRESET_DELETE_CONFIRM")))
 				{
 					DeleteQuickPreset();
 					ImGui::CloseCurrentPopup();
@@ -682,7 +685,7 @@ namespace
 			ImGui::EndPopup();
 		}
 		if (*quickPresetStatus)
-			ImGui::TextWrapped("%s", quickPresetStatus);
+			ImGui::TextWrapped("%s", UiText(quickPresetStatus));
 	}
 
 	bool ValidSelection(const Teams& teams)
@@ -780,10 +783,10 @@ namespace
 		{
 			const int position = slot % SlotsPerTeam;
 			if (position == 0)
-				ImGui::SeparatorText(slot == 0 ? "Player 1" : "Player 2");
+				ImGui::SeparatorText(slot == 0 ? UiText("TEAM_PLAYER1") : UiText("TEAM_PLAYER2"));
 			ImGui::PushID(slot);
-			char label[16];
-			std::snprintf(label, sizeof(label), "Slot %d", position + 1);
+			char label[32];
+			std::snprintf(label, sizeof(label), UiText("TEAM_SLOT"), position + 1);
 			const int current = slots[slot].id;
 			if (ImGui::BeginCombo(label, Roster[current].name))
 			{
@@ -809,12 +812,12 @@ namespace
 			auto& assist = slots[slot].assist;
 			const auto& names = Roster[slots[slot].id].assists;
 			const bool knownAssist = assist >= 0 && assist < IM_ARRAYSIZE(AssistTypes);
-			if (ImGui::BeginCombo("Assist", knownAssist ? names[assist] : "Unknown"))
+			if (ImGui::BeginCombo(UiText("TEAM_ASSIST"), knownAssist ? names[assist] : UiText("TEAM_UNKNOWN_ASSIST")))
 			{
 				for (int type = 0; type < IM_ARRAYSIZE(AssistTypes); ++type)
 				{
 					char option[64];
-					std::snprintf(option, sizeof(option), "%s - %s", AssistTypes[type], names[type]);
+					std::snprintf(option, sizeof(option), "%s - %s", UiText(AssistTypes[type]), names[type]);
 					const bool selected = type == assist;
 					if (ImGui::Selectable(option, selected))
 						assist = type;
@@ -840,13 +843,13 @@ namespace
 		Log(attempt, "Apply and reload clicked");
 		if (!SupportsTeamReload())
 		{
-			status = "Team reload is unavailable for this executable.";
+			status = "TEAM_UNAVAILABLE";
 			Log(attempt, "native reload signature mismatch");
 			return;
 		}
 		if (recording || recordingP1 || recordingP2 || replaying || replayingP1 || replayingP2)
 		{
-			status = "Stop recording or playback before editing teams.";
+			status = "TEAM_STOP_RECORDING";
 			Log(attempt, "blocked by active recording or playback");
 			return;
 		}
@@ -858,7 +861,7 @@ namespace
 			|| !SameSelection(current.teams, shown.teams) || !ReadLoadedTeams(loaded)
 			|| !ReadAction(current.action, action) || !IsFighting(action) || (action.flags & ReloadTeams))
 		{
-			status = "Wait until both teams are ready and the round has started.";
+			status = "TEAM_WAIT";
 			Log(attempt, "match preflight failed settings=%p action=%p restart=%u step=%d next=%d flags=0x%08X",
 				reinterpret_cast<void*>(current.settings), reinterpret_cast<void*>(current.action),
 				action.restart, action.step, action.nextStep, action.flags);
@@ -876,7 +879,7 @@ namespace
 			{
 				if (edit.id == draft[other].id)
 				{
-					status = "Choose three different fighters per team.";
+					status = "TEAM_DISTINCT";
 					Log(attempt, "duplicate fighter id=%d side=%d", edit.id, slot / SlotsPerTeam + 1);
 					return;
 				}
@@ -899,7 +902,7 @@ namespace
 
 		if (!reloadFlags)
 		{
-			status = "Change a fighter, assist, or team order first.";
+			status = "TEAM_NO_CHANGE";
 			Log(attempt, "no selection changes");
 			return;
 		}
@@ -927,8 +930,8 @@ namespace
 				ClearReloadFlags(current.action, reloadFlags);
 			const bool restored = Write(selectionAddress, current.teams);
 			Log(attempt, "restore after failed write=%d", restored);
-			status = restored ? "Could not apply the change. Original settings restored."
-				: "Could not restore the original settings. Start a fresh Training match.";
+			status = restored ? "TEAM_RESTORE_OK"
+				: "TEAM_RESTORE_FAILED";
 			if (!restored)
 			{
 				trial.before = current;
@@ -938,7 +941,7 @@ namespace
 		}
 
 		trial = { current, proposed, loaded, expected, GetTickCount64(), true, false, attempt, reloadFlags };
-		status = "Reload requested. Waiting for the game to load the teams...";
+		status = "TEAM_RELOAD_WAIT";
 		if (logAvailable)
 		{
 			lastEditorUpdate.store(trial.started);
@@ -964,28 +967,31 @@ void TrainingTeamEditor::OpenQuickSetup()
 
 bool TrainingTeamEditor::DrawQuickSetup()
 {
-	ImGui::SeparatorText("Quick Training");
+	ImGui::SeparatorText(UiText("QUICK_TITLE"));
 	DrawQuickPresets();
-	ImGui::Combo("Stage", &quickStage, Stages.data(), static_cast<int>(Stages.size()));
+	std::array<const char*, Stages.size()> stageLabels{};
+	for (size_t stage = 0; stage < Stages.size(); ++stage)
+		stageLabels[stage] = UiText(Stages[stage]);
+	ImGui::Combo(UiText("QUICK_STAGE"), &quickStage, stageLabels.data(), static_cast<int>(stageLabels.size()));
 	DrawTeamDraft(quickDraft);
 	if (*quickSetupStatus)
-		ImGui::TextWrapped("%s", quickSetupStatus);
+		ImGui::TextWrapped("%s", UiText(quickSetupStatus));
 
-	if (ImGui::Button("Start Training"))
+	if (ImGui::Button(UiText("QUICK_START")))
 	{
 		const auto picks = QuickPicks();
 		if (!ValidPicks(picks))
 		{
 			TraceQuickShortcut("Start Training rejected: invalid fighter or assist selection");
-			quickSetupStatus = "Choose three different fighters and an assist for each team.";
+			quickSetupStatus = "QUICK_COMPLETE_TEAMS";
 		}
 		else if (TrainingShortcut::StartTraining(picks, quickStage))
 			return true;
 		else
-			quickSetupStatus = "Return to the main menu to start a Training match.";
+			quickSetupStatus = "QUICK_RETURN_MAIN";
 	}
 	ImGui::SameLine();
-	return ImGui::Button("Cancel");
+	return ImGui::Button(UiText("UI_CANCEL"));
 }
 
 void TrainingTeamEditor::RequestTrainingRestart(std::optional<XPositions> positions)
@@ -1142,7 +1148,7 @@ bool TrainingTeamEditor::Update()
 		Log(trial.number, "editor ended trial: Training match unavailable");
 		trial = {};
 		draftFrom = {};
-		status = "The Training match ended. Changes are no longer pending.";
+		status = "TEAM_MATCH_ENDED";
 		return true;
 	}
 	if (trial.uncertain && match.settings == trial.before.settings && match.action == trial.before.action)
@@ -1151,7 +1157,7 @@ bool TrainingTeamEditor::Update()
 	{
 		trial = {};
 		draftFrom = {};
-		status = "New Training match detected.";
+		status = "TEAM_NEW_MATCH";
 		return true;
 	}
 
@@ -1182,8 +1188,8 @@ bool TrainingTeamEditor::Update()
 			pendingRestart = { match.settings, match.action };
 			Log(trial.number, "editor completed trial: assists verified, all class IDs verifiable=%d", known);
 			LogLoadedTeams(trial.number, "confirmed loaded", loaded);
-			status = known ? "Loaded fighters and assists match the requested teams."
-				: "Assists verified. Check the new fighter in-game.";
+			status = known ? "TEAM_VERIFIED"
+				: "TEAM_VERIFY_FIGHTER";
 			return true;
 		}
 	}
@@ -1207,37 +1213,37 @@ bool TrainingTeamEditor::Update()
 		{
 			draftFrom = {};
 			Log(trial.number, "editor confirmed original selection restored");
-			status = "The game kept the original fighters and assists. Original selection restored.";
+			status = "TEAM_ORIGINAL_RESTORED";
 			return true;
 		}
 	}
 
 	trial.uncertain = true;
 	Log(trial.number, "editor could not confirm teams; further edits disabled for this match");
-	status = action.restart || action.step == RestartStep ? "The Training reload did not finish. See the log."
-		: "Could not confirm the loaded teams. See the log.";
+	status = action.restart || action.step == RestartStep ? "TEAM_RELOAD_TIMEOUT"
+		: "TEAM_NO_CONFIRMATION";
 	return false;
 }
 
 void TrainingTeamEditor::Draw()
 {
-	if (!ImGui::BeginTabItem("Teams (Experimental)"))
+	if (!ImGui::BeginTabItem(Localizer::UiLabel("TEAM_TAB").c_str()))
 		return;
 
-	ImGui::TextWrapped("Edit fighters and assists, then apply the changes in Training.");
+	ImGui::TextWrapped("%s", UiText("TEAM_INFO"));
 	if (logAvailable)
-		ImGui::TextDisabled("%s", logInTemp ? "Log: %TEMP%\\UMVC3TrainingToolsInt\\logs\\UMVC3TrainingToolsInt-Teams.log"
-			: "Log: logs\\UMVC3TrainingToolsInt-Teams.log");
+		ImGui::TextDisabled(UiText("TEAM_LOG"), logInTemp ? "%TEMP%\\UMVC3TrainingToolsInt\\logs\\UMVC3TrainingToolsInt-Teams.log"
+			: "logs\\UMVC3TrainingToolsInt-Teams.log");
 	else
-		ImGui::TextDisabled("Could not create the team editor log.");
+		ImGui::TextDisabled("%s", UiText("TEAM_NO_LOG"));
 	if (*status)
-		ImGui::TextWrapped("%s", status);
+		ImGui::TextWrapped("%s", UiText(status));
 
 	Match match;
 	if (trial.uncertain || !ReadMatch(match) || !ValidSelection(match.teams))
 	{
 		if (!trial.uncertain)
-			ImGui::TextWrapped("Enter a Training match with the standard roster to edit teams.");
+			ImGui::TextWrapped("%s", UiText("TEAM_NEED_MATCH"));
 		ImGui::EndTabItem();
 		return;
 	}
@@ -1248,10 +1254,10 @@ void TrainingTeamEditor::Draw()
 	ImGui::BeginDisabled(trial.pending);
 	DrawTeamDraft(draft);
 
-	if (ImGui::Button("Apply and reload"))
+	if (ImGui::Button(UiText("TEAM_APPLY")))
 		Apply(match);
 	ImGui::SameLine();
-	if (ImGui::Button("Reset draft"))
+	if (ImGui::Button(UiText("TEAM_RESET_DRAFT")))
 	{
 		ResetDraft(match);
 		status = "";

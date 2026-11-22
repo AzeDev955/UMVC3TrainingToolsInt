@@ -10,6 +10,7 @@
 #include "utils\Patterns.h"
 #include "code\umvc3utils.h"
 #include <filesystem>
+#include <fstream>
 #include "code\Localizer.h"
 #include "code\umvc3menu.h"
 #include "code/TrainingTeamEditor.h"
@@ -17,12 +18,15 @@
 #include "code/TrainingPad.h"
 #include "code/ReleaseUpdate.h"
 #include "commdlg.h"
+#include <algorithm>
 //#include "code\umvc3_sMvc3Main.h"
 //#define _CRTDBG_MAP_ALLOC
 //#include <stdlib.h>
 //#include <crtdbg.h>
 
 using namespace Memory::VP;
+using Localizer::UiLabel;
+using Localizer::UiText;
 bool ShowToolWindow = false;
 static bool toolToggleWasDown = false;
 bool ShowAboutWindow = false;
@@ -34,13 +38,6 @@ HMODULE hm = NULL;
 
 std::string TestStr = "Click Me Please.";
 //sMvc3Manager* ThreeManager;
-
-//For the CSV File.
-//std::ifstream CSVFile;
-std::string CSVPath;
-LocalizationMap LocalMap;
-std::string DefaultLanguage = "English";
-std::string UserLangauge = "";
 
 //extern "C" bool ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -154,7 +151,11 @@ static bool CheckGame()
 	}
 	else
 	{
-		MessageBoxA(0, "Unfortunaetly this version of the game is not compatible.\nYou need the most up to date Steam version of\nUltimate Marvel vs Capcom 3(Or the April 2017 version).", 0, MB_ICONINFORMATION);
+		const bool spanish = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_SPANISH;
+		MessageBoxW(nullptr, spanish
+			? L"Esta versi\u00f3n del juego no es compatible. Usa la versi\u00f3n actual de Steam o la de abril de 2017."
+			: L"This game version is incompatible. Use the current Steam version or the April 2017 version.",
+			L"UMVC3 Training Tools", MB_ICONINFORMATION);
 		return false;
 	}
 }
@@ -192,14 +193,14 @@ static void TheAboutWindow(bool* p_open)
 		ImGui::End();
 		return;
 	}
-	ImGui::Text("Version %s", ReleaseUpdate::VersionTag);
-	ImGui::Text("2023 - 2025 By Eternal Yoshi");
+	ImGui::Text(UiText("UI_VERSION"), ReleaseUpdate::VersionTag);
+	ImGui::TextUnformatted(UiText("UI_AUTHOR"));
 	ImGui::Separator();
-	ImGui::Text("Thanks To SanHKHaan, Sheep, Techs, anotak, & Gneiss\n for finding the pointers and memeory offsets that\nmade this possible, and Ermmaccer for the\noriginal UMVC3Hook.\n");
+	ImGui::TextWrapped("%s", UiText("UI_THANKS"));
 	ImGui::Separator();
-	ImGui::Text("In case it isn't obvious, this tool is NOT designed to\nenable cheating in online multiplayer and\nis intended to only function in Training Mode.");
+	ImGui::TextWrapped("%s", UiText("UI_TRAINING_ONLY"));
 
-	if (ImGui::Button("OK"))
+	if (ImGui::Button(UiText("UI_OK")))
 		ShowAboutWindow = false;
 
 	ImGui::End();
@@ -208,13 +209,14 @@ static void TheAboutWindow(bool* p_open)
 
 static void TheMenuBar()
 {
+	static bool languageSaveFailed = false;
 	if (ShowAboutWindow) TheAboutWindow(&ShowAboutWindow);
 
 	if (ImGui::BeginMenuBar())
 	{
-		if (ImGui::BeginMenu("File"))
+		if (ImGui::BeginMenu(UiText("MENU_FILE")))
 		{
-			if (ImGui::MenuItem(("Reset Settings To Default")))
+			if (ImGui::MenuItem(UiText("FILE_RESETSETTINGS")))
 			{
 				ResetSettings();
 
@@ -223,29 +225,37 @@ static void TheMenuBar()
 			ImGui::EndMenu();
 		}
 
-		if (ImGui::BeginMenu("Misc"))
+		if (ImGui::BeginMenu(UiText("MENU_MISC")))
 		{
+			ImGui::MenuItem(UiText("MISC_ABOUT"), NULL, &ShowAboutWindow);
+			ImGui::EndMenu();
+		}
 
-			ImGui::MenuItem("About", NULL, &ShowAboutWindow);
-
+		if (ImGui::BeginMenu(UiLabel("UI_LANGUAGE").c_str()))
+		{
+			const bool spanish = Localizer::IsSpanish();
+			if (ImGui::MenuItem(UiText("UI_SPANISH"), nullptr, spanish))
+				languageSaveFailed = !Localizer::SetSpanish(true);
+			if (ImGui::MenuItem(UiText("UI_ENGLISH"), nullptr, !spanish))
+				languageSaveFailed = !Localizer::SetSpanish(false);
 			ImGui::EndMenu();
 		}
 
 		ImGui::EndMenuBar();
 	}
 
-
-
+	if (languageSaveFailed)
+		ImGui::TextWrapped("%s", UiText("UI_LANGUAGE_SAVE_FAILED"));
 }
 
 static void TheExtraOptionsTab()
 {
 	//if (ImGui::BeginTabItem("Extra"))
-	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P1_EXTRA", DefaultLanguage)).c_str()))
+	if (ImGui::BeginTabItem(UiLabel("P1_EXTRA").c_str()))
 	{
 		ImGui::Separator();
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_RESTARTINTRO", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_RESTARTINTRO")))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -255,9 +265,9 @@ static void TheExtraOptionsTab()
 			}
 		}
 
-		ImGui::Text((getLocalizedString(LocalMap, "P1_RESTARTINTROD", DefaultLanguage)).c_str());
+		ImGui::TextUnformatted(UiText("P1_RESTARTINTROD"));
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_RESTARTREADY", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_RESTARTREADY")))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -267,15 +277,15 @@ static void TheExtraOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_RESTARTREADYD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P1_RESTARTREADYD"));
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_RESTARTTRAINING", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_RESTARTTRAINING")))
 			TrainingTeamEditor::RequestTrainingRestart();
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P1_POSITIONING", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P1_POSITIONING"));
 
-		ImGui::Text((getLocalizedString(LocalMap, "P1_PLAYER1POSITION", DefaultLanguage)).c_str());
-		if (ImGui::DragFloat(((getLocalizedString(LocalMap, "P1_PLAYER1XPOSITION", DefaultLanguage)).c_str()), &p1Pos, 1.0f, -800.0f, 800.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+		ImGui::TextUnformatted(UiText("P1_PLAYER1POSITION"));
+		if (ImGui::DragFloat(UiText("P1_PLAYER1XPOSITION"), &p1Pos, 1.0f, -800.0f, 800.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 		{
 			if (p1Pos > 800)
 			{
@@ -287,8 +297,8 @@ static void TheExtraOptionsTab()
 			}
 		}
 
-		ImGui::Text((getLocalizedString(LocalMap, "P1_PLAYER2POSITION", DefaultLanguage)).c_str());
-		if (ImGui::DragFloat(((getLocalizedString(LocalMap, "P1_PLAYER2XPOSITION", DefaultLanguage)).c_str()), &p2Pos, 1.0f, -800.0f, 800.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+		ImGui::TextUnformatted(UiText("P1_PLAYER2POSITION"));
+		if (ImGui::DragFloat(UiText("P1_PLAYER2XPOSITION"), &p2Pos, 1.0f, -800.0f, 800.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 		{
 			if (p2Pos > 800)
 			{
@@ -300,8 +310,8 @@ static void TheExtraOptionsTab()
 			}
 		}
 
-		ImGui::Text((getLocalizedString(LocalMap, "P1_POSITIONPRESETS", DefaultLanguage)).c_str());
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSDEFAULT", DefaultLanguage)).c_str()))
+		ImGui::TextUnformatted(UiText("P1_POSITIONPRESETS"));
+		if (ImGui::Button(UiText("P1_POSDEFAULT")))
 		{
 
 			p1Pos = -125.0f;
@@ -310,7 +320,7 @@ static void TheExtraOptionsTab()
 
 		}
 		ImGui::SameLine();
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSDEFAULT2P", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_POSDEFAULT2P")))
 		{
 
 			p1Pos = 125.0f;
@@ -318,13 +328,13 @@ static void TheExtraOptionsTab()
 
 
 		}
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSLEFT", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_POSLEFT")))
 		{
 			p1Pos = TrainingTeamEditor::LeftCorner.p1;
 			p2Pos = TrainingTeamEditor::LeftCorner.p2;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSLEFT2P", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_POSLEFT2P")))
 		{
 
 			p1Pos = -800.0f;
@@ -333,13 +343,13 @@ static void TheExtraOptionsTab()
 
 		}
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSRIGHT", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_POSRIGHT")))
 		{
 			p1Pos = TrainingTeamEditor::RightCorner.p1;
 			p2Pos = TrainingTeamEditor::RightCorner.p2;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_POSRIGHT2P", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_POSRIGHT2P")))
 		{
 
 			p1Pos = 800.0f;
@@ -348,38 +358,38 @@ static void TheExtraOptionsTab()
 
 		}
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P1_ETC", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P1_ETC"));
 
-		if (ImGui::Checkbox(((getLocalizedString(LocalMap, "P1_ENDLESSX1P", DefaultLanguage)).c_str()), &EndlessXFactorP1))
+		if (ImGui::Checkbox(UiText("P1_ENDLESSX1P"), &EndlessXFactorP1))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_ENDLESSX1PD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P1_ENDLESSX1PD"));
 
 		ImGui::SameLine();
 
-		if (ImGui::Checkbox(((getLocalizedString(LocalMap, "P1_ENDLESSX2P", DefaultLanguage)).c_str()), &EndlessXFactorP2))
+		if (ImGui::Checkbox(UiText("P1_ENDLESSX2P"), &EndlessXFactorP2))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_ENDLESSX2PD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P1_ENDLESSX2PD"));
 		ImGui::Separator();
 
 		//ImGui::SeparatorText("Etc.");
 
-		if (ImGui::Checkbox(((getLocalizedString(LocalMap, "P1_MOVEINPUTSTOLEFT", DefaultLanguage)).c_str()), &MoveInputDisplay))
+		if (ImGui::Checkbox(UiText("P1_MOVEINPUTSTOLEFT"), &MoveInputDisplay))
 		{
 			LeftSideInputDisplay();
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_MOVEINPUTSTOLEFTD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P1_MOVEINPUTSTOLEFTD"));
 
 		ImGui::Separator();
 
-		//ImGui::Text("Game Speed");
-		if (ImGui::DragFloat(((getLocalizedString(LocalMap, "P1_CHARACTERSPEEDP1", DefaultLanguage)).c_str()), &P1Char1Speed, 0.01f, 0.01666667f, 2.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+		//ImGui::Text(UiText("UI_GAME_SPEED"));
+		if (ImGui::DragFloat(UiText("P1_CHARACTERSPEEDP1"), &P1Char1Speed, 0.01f, 0.01666667f, 2.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 		{
 
 			if (P1Char1Speed > 2.0)
@@ -394,9 +404,9 @@ static void TheExtraOptionsTab()
 			SetGlobalPlayerSpeed();
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_CHARACTERSPEEDP1D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P1_CHARACTERSPEEDP1D"));
 
-		if (ImGui::DragFloat(((getLocalizedString(LocalMap, "P1_CHARACTERSPEEDP2", DefaultLanguage)).c_str()), &P2Char1Speed, 0.01f, 0.01666667f, 2.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+		if (ImGui::DragFloat(UiText("P1_CHARACTERSPEEDP2"), &P2Char1Speed, 0.01f, 0.01666667f, 2.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 		{
 
 			if (P2Char1Speed > 2.0)
@@ -411,9 +421,9 @@ static void TheExtraOptionsTab()
 			SetGlobalPlayerSpeed();
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_CHARACTERSPEEDP2D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P1_CHARACTERSPEEDP2D"));
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_NORMALSPEEDP1", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_NORMALSPEEDP1")))
 		{
 			P1Char1Speed = 1;
 			SetGlobalPlayerSpeed();
@@ -421,13 +431,13 @@ static void TheExtraOptionsTab()
 
 		ImGui::SameLine();
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_NORMALSPEEDP2", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_NORMALSPEEDP2")))
 		{
 			P2Char1Speed = 1;
 			SetGlobalPlayerSpeed();
 		}
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VJOESLOWSPEEDP1", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_VJOESLOWSPEEDP1")))
 		{
 			P1Char1Speed = 0.75;
 			SetGlobalPlayerSpeed();
@@ -435,13 +445,13 @@ static void TheExtraOptionsTab()
 
 		ImGui::SameLine();
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VJOESLOWSPEEDP2", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_VJOESLOWSPEEDP2")))
 		{
 			P2Char1Speed = 0.75;
 			SetGlobalPlayerSpeed();
 		}
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VALEOFMISTSPEEDP1", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_VALEOFMISTSPEEDP1")))
 		{
 			P1Char1Speed = 0.66666666667;
 			SetGlobalPlayerSpeed();
@@ -449,7 +459,7 @@ static void TheExtraOptionsTab()
 
 		ImGui::SameLine();
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VALEOFMISTSPEEDP2", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P1_VALEOFMISTSPEEDP2")))
 		{
 			P2Char1Speed = 0.66666666667;
 			SetGlobalPlayerSpeed();
@@ -457,7 +467,7 @@ static void TheExtraOptionsTab()
 
 
 #if DEBUG
-		if (ImGui::Checkbox("Enable Game Speed Change(Use at own risk!)", &ModifyGameSpeed))
+		if (ImGui::Checkbox(UiText("UI_GAME_SPEED_ENABLE"), &ModifyGameSpeed))
 		{
 
 		}
@@ -465,7 +475,7 @@ static void TheExtraOptionsTab()
 
 		if (ModifyGameSpeed)
 		{
-			if (ImGui::SliderFloat("Game Speed", &GameSpeed, 0.01666667f, 5.0f))
+			if (ImGui::SliderFloat(UiText("UI_GAME_SPEED"), &GameSpeed, 0.01666667f, 5.0f))
 			{
 				SetGameSpeed(GameSpeed);
 
@@ -479,7 +489,7 @@ static void TheExtraOptionsTab()
 
 		ImGui::Separator();
 
-		ImGui::Text((getLocalizedString(LocalMap, "P1_MORESOON", DefaultLanguage)).c_str());
+		ImGui::TextUnformatted(UiText("P1_MORESOON"));
 
 		ImGui::EndTabItem();
 	}
@@ -488,37 +498,37 @@ static void TheExtraOptionsTab()
 static void TheStatusOptionsTab()
 {
 	//Player and Status Related  Settings such as Health.
-	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P2_STATUS", DefaultLanguage)).c_str()))
+	if (ImGui::BeginTabItem(UiLabel("P2_STATUS").c_str()))
 	{
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P2_CHARACTERHP", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P2_CHARACTERHP"));
 
 		//Toggle for using individual character health.
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_SETINDIVIDUALHP", DefaultLanguage)).c_str(), &SetIndividualHP))
+		if (ImGui::Checkbox(UiText("P2_SETINDIVIDUALHP"), &SetIndividualHP))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_SETINDIVIDUALHPD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_SETINDIVIDUALHPD"));
 
 		//Toggle for Applying Health Settings to Red Health.
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_APPLYREDHPP1", DefaultLanguage)).c_str(), &AlsoSetRedHealthP1))
+		if (ImGui::Checkbox(UiText("P2_APPLYREDHPP1"), &AlsoSetRedHealthP1))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_APPLYREDHPP1D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_APPLYREDHPP1D"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_APPLYREDHPP2", DefaultLanguage)).c_str(), &AlsoSetRedHealthP2))
+		if (ImGui::Checkbox(UiText("P2_APPLYREDHPP2"), &AlsoSetRedHealthP2))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_APPLYREDHPP2D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_APPLYREDHPP2D"));
 
 		if (P1Char1Health)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P2_HEALTHP1C1", DefaultLanguage)).c_str());
-			if (ImGui::DragFloat("P1C1 HP %", &P1Char1Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+			ImGui::TextUnformatted(UiText("P2_HEALTHP1C1"));
+			if (ImGui::DragFloat(UiText("UI_HP_P1C1"), &P1Char1Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 			{
 
 
@@ -540,8 +550,8 @@ static void TheStatusOptionsTab()
 
 		if (P1Char2Health)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P2_HEALTHP1C2", DefaultLanguage)).c_str());
-			if (ImGui::DragFloat("P1C2 HP %", &P1Char2Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+			ImGui::TextUnformatted(UiText("P2_HEALTHP1C2"));
+			if (ImGui::DragFloat(UiText("UI_HP_P1C2"), &P1Char2Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 			{
 
 				if (P1Char2Health > 1.0)
@@ -562,8 +572,8 @@ static void TheStatusOptionsTab()
 
 		if (P1Char3Health)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P2_HEALTHP1C3", DefaultLanguage)).c_str());
-			if (ImGui::DragFloat("P1C3 HP %", &P1Char3Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+			ImGui::TextUnformatted(UiText("P2_HEALTHP1C3"));
+			if (ImGui::DragFloat(UiText("UI_HP_P1C3"), &P1Char3Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 			{
 
 				if (P1Char3Health > 1.0)
@@ -584,8 +594,8 @@ static void TheStatusOptionsTab()
 
 		if (P2Char1Health)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P2_HEALTHP2C1", DefaultLanguage)).c_str());
-			if (ImGui::DragFloat("P2C1 HP %", &P2Char1Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+			ImGui::TextUnformatted(UiText("P2_HEALTHP2C1"));
+			if (ImGui::DragFloat(UiText("UI_HP_P2C1"), &P2Char1Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 			{
 
 				if (P2Char1Health > 1.0)
@@ -606,8 +616,8 @@ static void TheStatusOptionsTab()
 
 		if (P2Char2Health)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P2_HEALTHP2C2", DefaultLanguage)).c_str());
-			if (ImGui::DragFloat("P2C2 HP %", &P2Char2Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+			ImGui::TextUnformatted(UiText("P2_HEALTHP2C2"));
+			if (ImGui::DragFloat(UiText("UI_HP_P2C2"), &P2Char2Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 			{
 
 				if (P2Char2Health > 1.0)
@@ -628,8 +638,8 @@ static void TheStatusOptionsTab()
 
 		if (P2Char3Health)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P2_HEALTHP2C3", DefaultLanguage)).c_str());
-			if (ImGui::DragFloat("P2C3 HP %", &P2Char3Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+			ImGui::TextUnformatted(UiText("P2_HEALTHP2C3"));
+			if (ImGui::DragFloat(UiText("UI_HP_P2C3"), &P2Char3Health, 0.003f, 0.001f, 1.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 			{
 
 				if (P2Char3Health > 1.0)
@@ -648,12 +658,12 @@ static void TheStatusOptionsTab()
 			}
 		}
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P2_HYPERMETER", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P2_HYPERMETER"));
 
 		//if (P1Meter)
 		//{
-		ImGui::Text((getLocalizedString(LocalMap, "P2_PLAYER1METER", DefaultLanguage)).c_str());
-		if (ImGui::DragInt((getLocalizedString(LocalMap, "P2_P1METER", DefaultLanguage)).c_str(), &P1Meter, 100.0f, 0, 50000, "%d"))
+		ImGui::TextUnformatted(UiText("P2_PLAYER1METER"));
+		if (ImGui::DragInt(UiText("P2_P1METER"), &P1Meter, 100.0f, 0, 50000, "%d"))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -671,13 +681,13 @@ static void TheStatusOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_P1METERD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_P1METERD"));
 		//}
 
 		//if (P2Meter)
 		//{
-		ImGui::Text((getLocalizedString(LocalMap, "P2_PLAYER2METER", DefaultLanguage)).c_str());
-		if (ImGui::DragInt((getLocalizedString(LocalMap, "P2_P2METER", DefaultLanguage)).c_str(), &P2Meter, 100.0f, 0, 50000, "%d"))
+		ImGui::TextUnformatted(UiText("P2_PLAYER2METER"));
+		if (ImGui::DragInt(UiText("P2_P2METER"), &P2Meter, 100.0f, 0, 50000, "%d"))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -696,38 +706,28 @@ static void TheStatusOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_P2METERD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_P2METERD"));
 		//}
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_METERLOCKP1", DefaultLanguage)).c_str(), &LockP1Meter))
+		if (ImGui::Checkbox(UiText("P2_METERLOCKP1"), &LockP1Meter))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_METERLOCKP1D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_METERLOCKP1D"));
 
 		ImGui::SameLine();
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_METERLOCKP2", DefaultLanguage)).c_str(), &LockP2Meter))
+		if (ImGui::Checkbox(UiText("P2_METERLOCKP2"), &LockP2Meter))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_METERLOCKP2D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_METERLOCKP2D"));
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P2_JAMMINGBOMB", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P2_JAMMINGBOMB"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_JAMP1C1", DefaultLanguage)).c_str(), &P1C1Jammed))
-		{
-			if (CheckTheMode() == true)
-			{
-				JammingToggle();
-			}
-		}
-		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_JAMD", DefaultLanguage)).c_str());
-
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_JAMP1C2", DefaultLanguage)).c_str(), &P1C2Jammed))
+		if (ImGui::Checkbox(UiText("P2_JAMP1C1"), &P1C1Jammed))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -735,9 +735,9 @@ static void TheStatusOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_JAMD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_JAMD"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_JAMP1C3", DefaultLanguage)).c_str(), &P1C3Jammed))
+		if (ImGui::Checkbox(UiText("P2_JAMP1C2"), &P1C2Jammed))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -745,9 +745,9 @@ static void TheStatusOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_JAMD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_JAMD"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_JAMP2C1", DefaultLanguage)).c_str(), &P2C1Jammed))
+		if (ImGui::Checkbox(UiText("P2_JAMP1C3"), &P1C3Jammed))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -755,9 +755,9 @@ static void TheStatusOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_JAMD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_JAMD"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_JAMP2C2", DefaultLanguage)).c_str(), &P2C2Jammed))
+		if (ImGui::Checkbox(UiText("P2_JAMP2C1"), &P2C1Jammed))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -765,9 +765,9 @@ static void TheStatusOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_JAMD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_JAMD"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P2_JAMP2C3", DefaultLanguage)).c_str(), &P2C3Jammed))
+		if (ImGui::Checkbox(UiText("P2_JAMP2C2"), &P2C2Jammed))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -775,35 +775,55 @@ static void TheStatusOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P2_JAMD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P2_JAMD"));
+
+		if (ImGui::Checkbox(UiText("P2_JAMP2C3"), &P2C3Jammed))
+		{
+			if (CheckTheMode() == true)
+			{
+				JammingToggle();
+			}
+		}
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
+			ImGui::SetTooltip("%s", UiText("P2_JAMD"));
 
 		ImGui::Separator();
 
-		ImGui::Text((getLocalizedString(LocalMap, "P1_MORESOON", DefaultLanguage)).c_str());
+		ImGui::TextUnformatted(UiText("P1_MORESOON"));
 
 		ImGui::EndTabItem();
 
 	}
 }
 
+static const char* EvidenceLabel(int index)
+{
+	constexpr const char* keys[]{
+		"P3_EVIDENCE1", "P3_EVIDENCE2", "P3_EVIDENCE3", "P3_EVIDENCE4", "P3_EVIDENCE5",
+		"P3_EVIDENCE6", "P3_EVIDENCE7", "P3_EVIDENCE8", "P3_EVIDENCE9", "P3_EVIDENCEA",
+		"P3_EVIDENCEB", "P3_EVIDENCEC", "P3_EVIDENCED", "P3_EVIDENCEE"
+	};
+	return UiText(keys[std::clamp(index, 0, static_cast<int>(std::size(keys)) - 1)]);
+}
+
 static void TheCharacterOptionsTab()
 {
-	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P3_CHARACTER", DefaultLanguage)).c_str()))
+	if (ImGui::BeginTabItem(UiLabel("P3_CHARACTER").c_str()))
 	{
 
-		ImGui::Text((getLocalizedString(LocalMap, "P3_REMEMBER", DefaultLanguage)).c_str());
+		ImGui::TextUnformatted(UiText("P3_REMEMBER"));
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_FRANK", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_FRANK"));
 
 		if (FrankLevel)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P3_FRANKLEVEL", DefaultLanguage)).c_str());
-			if (ImGui::SliderInt("Lv", &FrankLevel, 1, 5))
+			ImGui::TextUnformatted(UiText("P3_FRANKLEVEL"));
+			if (ImGui::SliderInt(UiText("UI_LEVEL"), &FrankLevel, 1, 5))
 			{
 				ChangeFrankLevel(FrankLevel);
 			}
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-				ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_FRANKLEVELD", DefaultLanguage)).c_str());
+				ImGui::SetTooltip("%s", UiText("P3_FRANKLEVELD"));
 		}
 
 
@@ -817,21 +837,21 @@ static void TheCharacterOptionsTab()
 #endif
 
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_MRWRIGHT", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_MRWRIGHT"));
 
-		ImGui::Text((getLocalizedString(LocalMap, "P3_MRWRIGHTEVIDENCE", DefaultLanguage)).c_str());
+		ImGui::TextUnformatted(UiText("P3_MRWRIGHTEVIDENCE"));
 		if (WrightEvidenceA || WrightEvidenceB || WrightEvidenceC)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P3_MRWRIGHTEVIDENCE1", DefaultLanguage)).c_str());
+			ImGui::TextUnformatted(UiText("P3_MRWRIGHTEVIDENCE1"));
 
-			if (ImGui::BeginCombo("##WrightEvidencecombo", selected_item))
+			if (ImGui::BeginCombo("##WrightEvidencecombo", EvidenceLabel(EvidenceNameToID(selected_item) + 1)))
 			{
 				if (CheckTheMode() == true)
 				{
 					for (int n = 0; n < IM_ARRAYSIZE(EvidenceTypes); n++)
 					{
 						bool is_selected = (selected_item == EvidenceTypes[n]);
-						if (ImGui::Selectable(EvidenceTypes[n], is_selected))
+						if (ImGui::Selectable(EvidenceLabel(n), is_selected))
 						{
 							selected_item = EvidenceTypes[n];
 							WrightEvidenceA = EvidenceNameToID(selected_item);
@@ -845,18 +865,18 @@ static void TheCharacterOptionsTab()
 				ImGui::EndCombo();
 			}
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-				ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_MRWRIGHTEVIDENCED", DefaultLanguage)).c_str());
+				ImGui::SetTooltip("%s", UiText("P3_MRWRIGHTEVIDENCED"));
 
-			ImGui::Text((getLocalizedString(LocalMap, "P3_MRWRIGHTEVIDENCE2", DefaultLanguage)).c_str());
+			ImGui::TextUnformatted(UiText("P3_MRWRIGHTEVIDENCE2"));
 
-			if (ImGui::BeginCombo("##WrightEvidencecombo2", selected_itemTwo))
+			if (ImGui::BeginCombo("##WrightEvidencecombo2", EvidenceLabel(EvidenceNameToID(selected_itemTwo) + 1)))
 			{
 				if (CheckTheMode() == true)
 				{
 					for (int n = 0; n < IM_ARRAYSIZE(EvidenceTypesTwo); n++)
 					{
 						bool is_selected = (selected_itemTwo == EvidenceTypesTwo[n]);
-						if (ImGui::Selectable(EvidenceTypesTwo[n], is_selected))
+						if (ImGui::Selectable(EvidenceLabel(n), is_selected))
 						{
 							selected_itemTwo = EvidenceTypesTwo[n];
 							WrightEvidenceB = EvidenceNameToID(selected_itemTwo);
@@ -870,18 +890,18 @@ static void TheCharacterOptionsTab()
 				ImGui::EndCombo();
 			}
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-				ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_MRWRIGHTEVIDENCED", DefaultLanguage)).c_str());
+				ImGui::SetTooltip("%s", UiText("P3_MRWRIGHTEVIDENCED"));
 
-			ImGui::Text((getLocalizedString(LocalMap, "P3_MRWRIGHTEVIDENCE3", DefaultLanguage)).c_str());
+			ImGui::TextUnformatted(UiText("P3_MRWRIGHTEVIDENCE3"));
 
-			if (ImGui::BeginCombo("##WrightEvidencecombo3", selected_itemThree))
+			if (ImGui::BeginCombo("##WrightEvidencecombo3", EvidenceLabel(EvidenceNameToID(selected_itemThree) + 1)))
 			{
 				if (CheckTheMode() == true)
 				{
 					for (int n = 0; n < IM_ARRAYSIZE(EvidenceTypesThree); n++)
 					{
 						bool is_selected = (selected_itemThree == EvidenceTypesThree[n]);
-						if (ImGui::Selectable(EvidenceTypesThree[n], is_selected))
+						if (ImGui::Selectable(EvidenceLabel(n), is_selected))
 						{
 							selected_itemThree = EvidenceTypesThree[n];
 							WrightEvidenceC = EvidenceNameToID(selected_itemThree);
@@ -895,19 +915,19 @@ static void TheCharacterOptionsTab()
 				ImGui::EndCombo();
 			}
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-				ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_MRWRIGHTEVIDENCED", DefaultLanguage)).c_str());
+				ImGui::SetTooltip("%s", UiText("P3_MRWRIGHTEVIDENCED"));
 		}
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_MRWRIGHTLOCKEVIDENCE", DefaultLanguage)).c_str(), &LockEvidence))
+		if (ImGui::Checkbox(UiText("P3_MRWRIGHTLOCKEVIDENCE"), &LockEvidence))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_MRWRIGHTLOCKEVIDENCED", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_MRWRIGHTLOCKEVIDENCED"));
 
 
 		//ImGui::Text("Turnabout Toggle");
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_MRWRIGHTTURNABOUTT", DefaultLanguage)).c_str(), &Turnabout))
+		if (ImGui::Checkbox(UiText("P3_MRWRIGHTTURNABOUTT"), &Turnabout))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -915,11 +935,11 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_MRWRIGHTTURNABOUTTD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_MRWRIGHTTURNABOUTTD"));
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_JEAN", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_JEAN"));
 		//ImGui::Text("Dark Phoenix Toggle");
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_JEANDARKPHOENIX", DefaultLanguage)).c_str(), &DarkPhoenix))
+		if (ImGui::Checkbox(UiText("P3_JEANDARKPHOENIX"), &DarkPhoenix))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -927,13 +947,13 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_JEANDARKPHOENIXD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_JEANDARKPHOENIXD"));
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_MODOK", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_MODOK"));
 		if (MODOKLOU)
 		{
-			ImGui::Text((getLocalizedString(LocalMap, "P3_MODOKLOU", DefaultLanguage)).c_str());
-			if (ImGui::SliderInt("LOU", &MODOKLOU, 1, 10))
+			ImGui::TextUnformatted(UiText("P3_MODOKLOU"));
+			if (ImGui::SliderInt(UiText("UI_UNDERSTANDING"), &MODOKLOU, 1, 10))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -942,9 +962,9 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_MODOKLOUD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_MODOKLOUD"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_MODOKLOCKU", DefaultLanguage)).c_str(), &LockMODOKLOU))
+		if (ImGui::Checkbox(UiText("P3_MODOKLOCKU"), &LockMODOKLOU))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -952,13 +972,13 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_MODOKLOCKUD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_MODOKLOCKUD"));
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_DORMAMMU", DefaultLanguage)).c_str());
-		ImGui::Text((getLocalizedString(LocalMap, "P3_DORMAMMUSPELL", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_DORMAMMU"));
+		ImGui::TextUnformatted(UiText("P3_DORMAMMUSPELL"));
 
-		ImGui::Text((getLocalizedString(LocalMap, "P3_DORMAMMUSPELLRED", DefaultLanguage)).c_str());
-		if (ImGui::SliderInt((getLocalizedString(LocalMap, "P3_DORMRED", DefaultLanguage)).c_str(), &DormRed, 0, 3))
+		ImGui::TextUnformatted(UiText("P3_DORMAMMUSPELLRED"));
+		if (ImGui::SliderInt(UiText("P3_DORMRED"), &DormRed, 0, 3))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -967,10 +987,10 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_DORMAMMUSPELLREDD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_DORMAMMUSPELLREDD"));
 
-		ImGui::Text((getLocalizedString(LocalMap, "P3_DORMAMMUSPELLBLUE", DefaultLanguage)).c_str());
-		if (ImGui::SliderInt((getLocalizedString(LocalMap, "P3_DORMBLUE", DefaultLanguage)).c_str(), &DormBlue, 0, 3))
+		ImGui::TextUnformatted(UiText("P3_DORMAMMUSPELLBLUE"));
+		if (ImGui::SliderInt(UiText("P3_DORMBLUE"), &DormBlue, 0, 3))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -979,18 +999,18 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_DORMAMMUSPELLBLUED", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_DORMAMMUSPELLBLUED"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_DORMAMMUSPELLLOCK", DefaultLanguage)).c_str(), &LockDormSpells))
+		if (ImGui::Checkbox(UiText("P3_DORMAMMUSPELLLOCK"), &LockDormSpells))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_DORMAMMUSPELLLOCKD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_DORMAMMUSPELLLOCKD"));
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_DEADPOOL", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_DEADPOOL"));
 		//ImGui::Text("Deadpool Teleport");
-		if (ImGui::SliderInt((getLocalizedString(LocalMap, "P3_DEADPOOLTELEPORTCOUNT", DefaultLanguage)).c_str(), &DeadpoolTeleportCount, 0, 2))
+		if (ImGui::SliderInt(UiText("P3_DEADPOOLTELEPORTCOUNT"), &DeadpoolTeleportCount, 0, 2))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -998,21 +1018,21 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_DEADPOOLTELEPORTCOUNTD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_DEADPOOLTELEPORTCOUNTD"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_DEADPOOLTELEPORTLOCK", DefaultLanguage)).c_str(), &FreezeDeadpoolTPCounter))
+		if (ImGui::Checkbox(UiText("P3_DEADPOOLTELEPORTLOCK"), &FreezeDeadpoolTPCounter))
 		{
 			if (CheckTheMode() == true)
 			{
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_DEADPOOLTELEPORTLOCKD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_DEADPOOLTELEPORTLOCKD"));
 
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_WESKER", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_WESKER"));
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P3_WESKERBREAKGLASSES", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P3_WESKERBREAKGLASSES")))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -1020,17 +1040,17 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_WESKERBREAKGLASSESD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_WESKERBREAKGLASSESD"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_WESKERBREAKATSTART", DefaultLanguage)).c_str(), &BreakGlassesAtRestart))
+		if (ImGui::Checkbox(UiText("P3_WESKERBREAKATSTART"), &BreakGlassesAtRestart))
 		{
 
 		}
 
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P3_ETC", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P3_ETC"));
 		//ImGui::Text("Endless Install Toggle");
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P3_ENDLESSINSTALLS", DefaultLanguage)).c_str(), &EndlessInstalls))
+		if (ImGui::Checkbox(UiText("P3_ENDLESSINSTALLS"), &EndlessInstalls))
 		{
 			if (CheckTheMode() == true)
 			{
@@ -1038,7 +1058,7 @@ static void TheCharacterOptionsTab()
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P3_ENDLESSINSTALLSD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P3_ENDLESSINSTALLSD"));
 
 		ImGui::Separator();
 		ImGui::EndTabItem();
@@ -1809,116 +1829,116 @@ static void TheDebugStuffTab()
 
 static void TheIncomingStuffTab()
 {
-	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P5_INCOMING", DefaultLanguage)).c_str()))
+	if (ImGui::BeginTabItem(UiLabel("P5_INCOMING").c_str()))
 	{
-		ImGui::Text((getLocalizedString(LocalMap, "P5_INCOMINGW", DefaultLanguage)).c_str());
-		ImGui::Text((getLocalizedString(LocalMap, "P5_INCOMINGD", DefaultLanguage)).c_str());
+		ImGui::TextUnformatted(UiText("P5_INCOMINGW"));
+		ImGui::TextUnformatted(UiText("P5_INCOMINGD"));
 		ImGui::Separator();
 
-		ImGui::Text((getLocalizedString(LocalMap, "P5_INCOMINGTD", DefaultLanguage)).c_str());
-		//if (ImGui::DragInt((getLocalizedString(LocalMap, "P2_P1METER", DefaultLanguage)).c_str(), &P1Meter, 100.0f, 0, 50000, "%d"))
-		if (ImGui::DragInt((getLocalizedString(LocalMap, "P5_INCOMINGFRAMES", DefaultLanguage)).c_str(), &FrameDelayofDeath, 1, 0, 300, "%d"))
+		ImGui::TextUnformatted(UiText("P5_INCOMINGTD"));
+		//if (ImGui::DragInt(UiText("P2_P1METER"), &P1Meter, 100.0f, 0, 50000, "%d"))
+		if (ImGui::DragInt(UiText("P5_INCOMINGFRAMES"), &FrameDelayofDeath, 1, 0, 300, "%d"))
 		{
 			if (FrameDelayofDeath < 0) { FrameDelayofDeath = 0; }
 			if (FrameDelayofDeath > 300) { FrameDelayofDeath = 300; }
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P5_INCOMINGFRAMESD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P5_INCOMINGFRAMESD"));
 
-		if (ImGui::DragFloat((getLocalizedString(LocalMap, "P5_INCOMINGKOPOSX", DefaultLanguage)).c_str(), &DeathSiteX, 1.0f, -800.0f, 800.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+		if (ImGui::DragFloat(UiText("P5_INCOMINGKOPOSX"), &DeathSiteX, 1.0f, -800.0f, 800.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 		{
 			if (DeathSiteX < -800) { DeathSiteX = -800; }
 			if (DeathSiteX > 800) { DeathSiteX = 800; }
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P5_INCOMINGKOPOSXD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P5_INCOMINGKOPOSXD"));
 
-		if (ImGui::DragFloat((getLocalizedString(LocalMap, "P5_INCOMINGKOPOSY", DefaultLanguage)).c_str(), &DeathSiteY, 1.0f, 0.0f, 3000.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
+		if (ImGui::DragFloat(UiText("P5_INCOMINGKOPOSY"), &DeathSiteY, 1.0f, 0.0f, 3000.0f, "%.3f", ImGuiInputTextFlags_CharsDecimal))
 		{
 			if (DeathSiteY < 0) { DeathSiteY = 0; }
 			if (DeathSiteY > 3000) { DeathSiteY = 3000; }
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P5_INCOMINGKOPOSYD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P5_INCOMINGKOPOSYD"));
 		ImGui::Separator();
 
-		if (ImGui::Button((getLocalizedString(LocalMap, "P5_INCOMINGSYNCP1SPOS", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P5_INCOMINGSYNCP1SPOS")))
 		{
 			DeathSiteX = p1Pos;
 			DeathSiteY = 0;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button((getLocalizedString(LocalMap, "P5_INCOMINGSYNCP2SPOS", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P5_INCOMINGSYNCP2SPOS")))
 		{
 			DeathSiteX = p2Pos;
 			DeathSiteY = 0;
 		}
 		ImGui::Separator();
-		ImGui::Text((getLocalizedString(LocalMap, "P5_INCOMINGDEATHPOSPRESETS", DefaultLanguage)).c_str());
-		if (ImGui::Button((getLocalizedString(LocalMap, "P5_INCOMINGPOSCENTER", DefaultLanguage)).c_str()))
+		ImGui::TextUnformatted(UiText("P5_INCOMINGDEATHPOSPRESETS"));
+		if (ImGui::Button(UiText("P5_INCOMINGPOSCENTER")))
 		{
 			DeathSiteX = 0;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button((getLocalizedString(LocalMap, "P5_INCOMINGPOSLCORNER", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P5_INCOMINGPOSLCORNER")))
 		{
 			DeathSiteX = -800;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button((getLocalizedString(LocalMap, "P5_INCOMINGPOSRCORNER", DefaultLanguage)).c_str()))
+		if (ImGui::Button(UiText("P5_INCOMINGPOSRCORNER")))
 		{
 			DeathSiteX = 800;
 		}
 		ImGui::Separator();
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOACTIVECHARACTERP1", DefaultLanguage)).c_str(), &KOActiveCharacterAtStart))
+		if (ImGui::Checkbox(UiText("P5_KOACTIVECHARACTERP1"), &KOActiveCharacterAtStart))
 		{
 			if (CheckTheMode() == true)
 			{
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P5_KOACTIVECHARACTERP1D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P5_KOACTIVECHARACTERP1D"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOACTIVECHARACTERP2", DefaultLanguage)).c_str(), &KOActiveOpponentAtStart))
+		if (ImGui::Checkbox(UiText("P5_KOACTIVECHARACTERP2"), &KOActiveOpponentAtStart))
 		{
 			if (CheckTheMode() == true)
 			{
 			}
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P5_KOACTIVECHARACTERP2D", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P5_KOACTIVECHARACTERP2D"));
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P5_KOTOGGLES", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P5_KOTOGGLES"));
 
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOTOGGLEP1C1", DefaultLanguage)).c_str(), &Player1Character1Dead))
+		if (ImGui::Checkbox(UiText("P5_KOTOGGLEP1C1"), &Player1Character1Dead))
 		{
 			KOToggles();
 		}
 		ImGui::SameLine();
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOTOGGLEP1C2", DefaultLanguage)).c_str(), &Player1Character2Dead))
+		if (ImGui::Checkbox(UiText("P5_KOTOGGLEP1C2"), &Player1Character2Dead))
 		{
 			KOToggles();
 		}
 		ImGui::SameLine();
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOTOGGLEP1C3", DefaultLanguage)).c_str(), &Player1Character3Dead))
+		if (ImGui::Checkbox(UiText("P5_KOTOGGLEP1C3"), &Player1Character3Dead))
 		{
 			KOToggles();
 		}
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOTOGGLEP2C1", DefaultLanguage)).c_str(), &Player2Character1Dead))
-		{
-			KOToggles();
-		}
-		ImGui::SameLine();
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOTOGGLEP2C2", DefaultLanguage)).c_str(), &Player2Character2Dead))
+		if (ImGui::Checkbox(UiText("P5_KOTOGGLEP2C1"), &Player2Character1Dead))
 		{
 			KOToggles();
 		}
 		ImGui::SameLine();
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P5_KOTOGGLEP2C3", DefaultLanguage)).c_str(), &Player2Character3Dead))
+		if (ImGui::Checkbox(UiText("P5_KOTOGGLEP2C2"), &Player2Character2Dead))
 		{
 			KOToggles();
 		}
-		ImGui::Text((getLocalizedString(LocalMap, "P1_MORESOON", DefaultLanguage)).c_str());
+		ImGui::SameLine();
+		if (ImGui::Checkbox(UiText("P5_KOTOGGLEP2C3"), &Player2Character3Dead))
+		{
+			KOToggles();
+		}
+		ImGui::TextUnformatted(UiText("P1_MORESOON"));
 
 		ImGui::EndTabItem();
 
@@ -1928,7 +1948,7 @@ static void TheIncomingStuffTab()
 
 static void TheExtraDataTab()
 {
-	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P4_DATA", DefaultLanguage)).c_str()))
+	if (ImGui::BeginTabItem(UiLabel("P4_DATA").c_str()))
 	{
 		GetPlayerData();
 		//GetHurtboxData();
@@ -1955,7 +1975,7 @@ static void TheExtraDataTab()
 		char bufG[32];
 		char bufH[32];
 		char bufI[32];
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_REMAININGHITSTUN", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P4_REMAININGHITSTUN"));
 
 #pragma region Remaining Hitstun
 
@@ -1984,7 +2004,7 @@ static void TheExtraDataTab()
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
 				ImGui::PopStyleColor();				
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 			else
 			{
@@ -1993,7 +2013,7 @@ static void TheExtraDataTab()
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
 				ImGui::PopStyleColor();
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 			P1C1GroundRemaingHitstunPREV = P1C1GroundRemaingHitstun;
 		}
@@ -2024,7 +2044,7 @@ static void TheExtraDataTab()
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
 				ImGui::PopStyleColor();
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 			else
 			{				
@@ -2033,7 +2053,7 @@ static void TheExtraDataTab()
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf1);
 				ImGui::PopStyleColor();
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 			P1C1AirRemaingHitstunPREV = P1C1AirRemaingHitstun;
 		}
@@ -2060,14 +2080,14 @@ static void TheExtraDataTab()
 				sprintf(buf2, "%d/%d", (int)(P1C2GroundRemaingHitstun), (int)(P1C2GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf2);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 			else
 			{
 				sprintf(buf2, "%d/%d", (int)(P1C2GroundRemaingHitstun), (int)(P1C2GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf2);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 			P1C2GroundRemaingHitstunPREV = P1C2GroundRemaingHitstun;
 		}
@@ -2094,14 +2114,14 @@ static void TheExtraDataTab()
 				sprintf(buf2, "%d/%d", (int)(P1C2AirRemaingHitstun), (int)(P1C2AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf2);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 			else
 			{
 				sprintf(buf2, "%d/%d", (int)(P1C2AirRemaingHitstun), (int)(P1C2AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf2);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 			P1C2AirRemaingHitstunPREV = P1C2AirRemaingHitstun;
 		}
@@ -2128,14 +2148,14 @@ static void TheExtraDataTab()
 				sprintf(buf3, "%d/%d", (int)(P1C3GroundRemaingHitstun), (int)(P1C3GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf3);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 			else
 			{
 				sprintf(buf3, "%d/%d", (int)(P1C3GroundRemaingHitstun), (int)(P1C3GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf3);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 			P1C3GroundRemaingHitstunPREV = P1C3GroundRemaingHitstun;
 		}
@@ -2162,14 +2182,14 @@ static void TheExtraDataTab()
 				sprintf(buf3, "%d/%d", (int)(P1C3AirRemaingHitstun), (int)(P1C3AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf3);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 			else
 			{
 				sprintf(buf3, "%d/%d", (int)(P1C3AirRemaingHitstun), (int)(P1C3AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf3);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 			P1C3AirRemaingHitstunPREV = P1C3AirRemaingHitstun;
 		}
@@ -2196,14 +2216,14 @@ static void TheExtraDataTab()
 				sprintf(buf4, "%d/%d", (int)(P2C1GroundRemaingHitstun), (int)(P2C1GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf4);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 			else
 			{
 				sprintf(buf4, "%d/%d", (int)(P2C1GroundRemaingHitstun), (int)(P2C1GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf4);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 			P2C1GroundRemaingHitstunPREV = P2C1GroundRemaingHitstun;
 
@@ -2232,7 +2252,7 @@ static void TheExtraDataTab()
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf4);
 
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 			else
 			{
@@ -2240,7 +2260,7 @@ static void TheExtraDataTab()
 				sprintf(buf4, "%d/%d", (int)(P2C1AirRemaingHitstun), (int)(P2C1AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf4);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 			P2C1AirRemaingHitstunPREV = P2C1AirRemaingHitstun;
 		}
@@ -2267,14 +2287,14 @@ static void TheExtraDataTab()
 				sprintf(buf5, "%d/%d", (int)(P2C2GroundRemaingHitstun), (int)(P2C2GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf5);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 			else
 			{
 				sprintf(buf5, "%d/%d", (int)(P2C2GroundRemaingHitstun), (int)(P2C2GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf5);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 			P2C2GroundRemaingHitstunPREV = P2C2GroundRemaingHitstun;
 
@@ -2302,14 +2322,14 @@ static void TheExtraDataTab()
 				sprintf(buf5, "%d/%d", (int)(P2C2AirRemaingHitstun), (int)(P2C2AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf5);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 			else
 			{
 				sprintf(buf5, "%d/%d", (int)(P2C2AirRemaingHitstun), (int)(P2C2AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf5);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 			P2C2AirRemaingHitstunPREV = P2C2AirRemaingHitstun;
 		}
@@ -2336,14 +2356,14 @@ static void TheExtraDataTab()
 				sprintf(buf6, "%d/%d", (int)(P2C3GroundRemaingHitstun), (int)(P2C3GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf6);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 			else
 			{
 				sprintf(buf6, "%d/%d", (int)(P2C3GroundRemaingHitstun), (int)(P2C3GroundRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf6);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 			P2C3GroundRemaingHitstunPREV = P2C3GroundRemaingHitstun;
 		}
@@ -2370,14 +2390,14 @@ static void TheExtraDataTab()
 				sprintf(buf6, "%d/%d", (int)(P2C3AirRemaingHitstun), (int)(P2C3AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf6);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 			else
 			{
 				sprintf(buf6, "%d/%d", (int)(P2C3AirRemaingHitstun), (int)(P2C3AirRemaingHitstunMAX));
 				ImGui::ProgressBar((progress), ImVec2(0.f, 0.f), buf6);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 			P2C3AirRemaingHitstunPREV = P2C3AirRemaingHitstun;
 		}
@@ -2388,7 +2408,7 @@ static void TheExtraDataTab()
 
 #pragma region Remaining Blockstun
 		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, BStunColor);
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_REMAININGBLOCKSTUN", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P4_REMAININGBLOCKSTUN"));
 		//Makes it Blue.
 
 		//Checks for Pushblock Timer not being 0, and gets that instead if not 0.
@@ -2416,14 +2436,14 @@ static void TheExtraDataTab()
 				sprintf(buf7, "%d/%d", (int)(P1C1RemaingBlockstun), (int)(P1C1RemaingBlockstunMAX));				
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), buf7);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 			else
 			{
 				sprintf(buf7, "%d/%d", (int)(P1C1RemaingBlockstun), (int)(P1C1RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), buf7);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 			P1C1RemaingBlockstunPREV = P1C1RemaingBlockstun;
 		}
@@ -2452,14 +2472,14 @@ static void TheExtraDataTab()
 				sprintf(bufD, "%d/%d", (int)(P1C1PushblockTimer), (int)(P1C1PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufD);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 			else
 			{
 				sprintf(bufD, "%d/%d", (int)(P1C1PushblockTimer), (int)(P1C1PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufD);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C1"));
 			}
 
 			P1C1PushblockTimerPREV = P1C1PushblockTimer;
@@ -2490,14 +2510,14 @@ static void TheExtraDataTab()
 				sprintf(buf8, "%d/%d", (int)(P1C2RemaingBlockstun), (int)(P1C2RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), buf8);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 			else
 			{
 				sprintf(buf8, "%d/%d", (int)(P1C2RemaingBlockstun), (int)(P1C2RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), buf8);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 			P1C2RemaingBlockstunPREV = P1C2RemaingBlockstun;
 		}
@@ -2526,14 +2546,14 @@ static void TheExtraDataTab()
 				sprintf(bufE, "%d/%d", (int)(P1C2PushblockTimer), (int)(P1C2PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufE);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 			else
 			{
 				sprintf(bufE, "%d/%d", (int)(P1C2PushblockTimer), (int)(P1C2PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufE);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C2"));
 			}
 
 			P1C2PushblockTimerPREV = P1C2PushblockTimer;
@@ -2564,14 +2584,14 @@ static void TheExtraDataTab()
 				sprintf(buf9, "%d/%d", (int)(P1C3RemaingBlockstun), (int)(P1C3RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), buf9);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 			else
 			{
 				sprintf(buf9, "%d/%d", (int)(P1C3RemaingBlockstun), (int)(P1C3RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), buf9);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 			P1C3RemaingBlockstunPREV = P1C3RemaingBlockstun;
 		}
@@ -2600,14 +2620,14 @@ static void TheExtraDataTab()
 				sprintf(bufF, "%d/%d", (int)(P1C3PushblockTimer), (int)(P1C3PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufF);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 			else
 			{
 				sprintf(bufF, "%d/%d", (int)(P1C3PushblockTimer), (int)(P1C3PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufF);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP1C3"));
 			}
 
 			P1C3PushblockTimerPREV = P1C3PushblockTimer;
@@ -2638,14 +2658,14 @@ static void TheExtraDataTab()
 				sprintf(bufA, "%d/%d", (int)(P2C1RemaingBlockstun), (int)(P2C1RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufA);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 			else
 			{
 				sprintf(bufA, "%d/%d", (int)(P2C1RemaingBlockstun), (int)(P2C1RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufA);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 			P2C1RemaingBlockstunPREV = P2C1RemaingBlockstun;
 		}
@@ -2674,14 +2694,14 @@ static void TheExtraDataTab()
 				sprintf(bufG, "%d/%d", (int)(P2C1PushblockTimer), (int)(P2C1PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufG);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 			else
 			{
 				sprintf(bufG, "%d/%d", (int)(P2C1PushblockTimer), (int)(P2C1PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufG);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C1"));
 			}
 
 			P2C1PushblockTimerPREV = P2C1PushblockTimer;
@@ -2712,14 +2732,14 @@ static void TheExtraDataTab()
 				sprintf(bufB, "%d/%d", (int)(P2C2RemaingBlockstun), (int)(P2C2RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufB);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 			else
 			{
 				sprintf(bufB, "%d/%d", (int)(P2C2RemaingBlockstun), (int)(P2C2RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufB);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 			P2C2RemaingBlockstunPREV = P2C2RemaingBlockstun;
 		}
@@ -2748,14 +2768,14 @@ static void TheExtraDataTab()
 				sprintf(bufH, "%d/%d", (int)(P2C2PushblockTimer), (int)(P2C2PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufH);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 			else
 			{
 				sprintf(bufH, "%d/%d", (int)(P2C2PushblockTimer), (int)(P2C2PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufH);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C2"));
 			}
 
 			P2C2PushblockTimerPREV = P2C2PushblockTimer;
@@ -2786,14 +2806,14 @@ static void TheExtraDataTab()
 				sprintf(bufC, "%d/%d", (int)(P2C3RemaingBlockstun), (int)(P2C3RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufC);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 			else
 			{
 				sprintf(bufC, "%d/%d", (int)(P2C3RemaingBlockstun), (int)(P2C3RemaingBlockstunMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufC);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 			P2C3RemaingBlockstunPREV = P2C3RemaingBlockstun;
 		}
@@ -2822,14 +2842,14 @@ static void TheExtraDataTab()
 				sprintf(bufI, "%d/%d", (int)(P2C3PushblockTimer), (int)(P2C3PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufI);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 			else
 			{
 				sprintf(bufI, "%d/%d", (int)(P2C3PushblockTimer), (int)(P2C3PushblockTimerMAX));
 				ImGui::ProgressBar((Bprogress), ImVec2(0.f, 0.f), bufI);
 				ImGui::SameLine();
-				ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+				ImGui::SeparatorText(UiText("P4_HITSTUNP2C3"));
 			}
 
 			P2C3PushblockTimerPREV = P2C3PushblockTimer;
@@ -2842,9 +2862,9 @@ static void TheExtraDataTab()
 #pragma endregion
 
 
-		ImGui::SeparatorText((getLocalizedString(LocalMap, "P4_HITSTUNTIMERS", DefaultLanguage)).c_str());
+		ImGui::SeparatorText(UiText("P4_HITSTUNTIMERS"));
 
-		if (ImGui::TreeNode((getLocalizedString(LocalMap, "P4_HITSTUNTIMERSSH", DefaultLanguage)).c_str()))
+		if (ImGui::TreeNode(UiText("P4_HITSTUNTIMERSSH")))
 		{
 #pragma region Hitstun Stuff
 
@@ -2863,18 +2883,18 @@ static void TheExtraDataTab()
 
 			if (ImGui::BeginTable("table1", 5, flags))
 			{
-				ImGui::TableSetupColumn((getLocalizedString(LocalMap, "P4_HITSTUNPLAYER", DefaultLanguage)).c_str(), ImGuiTableColumnFlags_WidthFixed);
-				ImGui::TableSetupColumn((getLocalizedString(LocalMap, "P4_HITSTUNGROUND", DefaultLanguage)).c_str(), ImGuiTableColumnFlags_WidthFixed);
-				ImGui::TableSetupColumn((getLocalizedString(LocalMap, "P4_HITSTUNAIR", DefaultLanguage)).c_str(), ImGuiTableColumnFlags_WidthStretch);
-				ImGui::TableSetupColumn((getLocalizedString(LocalMap, "P4_HITSTUNMAXGROUND", DefaultLanguage)).c_str(), ImGuiTableColumnFlags_WidthFixed);
-				ImGui::TableSetupColumn((getLocalizedString(LocalMap, "P4_HITSTUNMAXAIR", DefaultLanguage)).c_str(), ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn(UiText("P4_HITSTUNPLAYER"), ImGuiTableColumnFlags_WidthFixed);
+				ImGui::TableSetupColumn(UiText("P4_HITSTUNGROUND"), ImGuiTableColumnFlags_WidthFixed);
+				ImGui::TableSetupColumn(UiText("P4_HITSTUNAIR"), ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn(UiText("P4_HITSTUNMAXGROUND"), ImGuiTableColumnFlags_WidthFixed);
+				ImGui::TableSetupColumn(UiText("P4_HITSTUNMAXAIR"), ImGuiTableColumnFlags_WidthStretch);
 				ImGui::TableHeadersRow();
 
 				if (ColorHitstunTimers) {
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP1C1"));
 					ImGui::TableSetColumnIndex(1);
 					if (P1C1GroundHitstunTimer > 300) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 150, 150, 255)); }
 					else if (P1C1GroundHitstunTimer > 175) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255)); }
@@ -2903,7 +2923,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP1C2"));
 					ImGui::TableSetColumnIndex(1);
 					if (P1C2GroundHitstunTimer > 300) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 150, 150, 255)); }
 					else if (P1C2GroundHitstunTimer > 175) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255)); }
@@ -2931,7 +2951,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP1C3"));
 					ImGui::TableSetColumnIndex(1);
 					if (P1C3GroundHitstunTimer > 300) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 150, 150, 255)); }
 					else if (P1C3GroundHitstunTimer > 175) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255)); }
@@ -2959,7 +2979,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP2C1"));
 					ImGui::TableSetColumnIndex(1);
 					if (P2C1GroundHitstunTimer > 300) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 150, 150, 255)); }
 					else if (P2C1GroundHitstunTimer > 175) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255)); }
@@ -2987,7 +3007,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP2C2"));
 					ImGui::TableSetColumnIndex(1);
 					if (P2C2GroundHitstunTimer > 300) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 150, 150, 255)); }
 					else if (P2C2GroundHitstunTimer > 175) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255)); }
@@ -3015,7 +3035,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP2C3"));
 					ImGui::TableSetColumnIndex(1);
 					if (P2C3GroundHitstunTimer > 300) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 150, 150, 255)); }
 					else if (P2C3GroundHitstunTimer > 175) { ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255)); }
@@ -3046,7 +3066,7 @@ static void TheExtraDataTab()
 				{
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP1C1", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP1C1"));
 					ImGui::TableSetColumnIndex(1);
 					ImGui::Text("%f", P1C1GroundHitstunTimer);
 					ImGui::TableSetColumnIndex(2);
@@ -3058,7 +3078,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP1C2", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP1C2"));
 					ImGui::TableSetColumnIndex(1);
 					ImGui::Text("%f", P1C2GroundHitstunTimer);
 					ImGui::TableSetColumnIndex(2);
@@ -3070,7 +3090,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP1C3", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP1C3"));
 					ImGui::TableSetColumnIndex(1);
 					ImGui::Text("%f", P1C3GroundHitstunTimer);
 					ImGui::TableSetColumnIndex(2);
@@ -3082,7 +3102,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP2C1", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP2C1"));
 					ImGui::TableSetColumnIndex(1);
 					ImGui::Text("%f", P2C1GroundHitstunTimer);
 					ImGui::TableSetColumnIndex(2);
@@ -3094,7 +3114,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP2C2", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP2C2"));
 					ImGui::TableSetColumnIndex(1);
 					ImGui::Text("%f", P2C2GroundHitstunTimer);
 					ImGui::TableSetColumnIndex(2);
@@ -3106,7 +3126,7 @@ static void TheExtraDataTab()
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Text((getLocalizedString(LocalMap, "P4_HITSTUNP2C3", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("P4_HITSTUNP2C3"));
 					ImGui::TableSetColumnIndex(1);
 					ImGui::Text("%f", P2C3GroundHitstunTimer);
 					ImGui::TableSetColumnIndex(2);
@@ -3126,12 +3146,12 @@ static void TheExtraDataTab()
 			ImGui::TreePop();
 		}
 #ifdef _DEBUG
-		if (ImGui::Checkbox((getLocalizedString(LocalMap, "P4_COLORHITSTUNTEXT", DefaultLanguage)).c_str(), &ColorHitstunTimers))
+		if (ImGui::Checkbox(UiText("P4_COLORHITSTUNTEXT"), &ColorHitstunTimers))
 		{
 
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
-			ImGui::SetTooltip((getLocalizedString(LocalMap, "P4_COLORHITSTUNTEXTD", DefaultLanguage)).c_str());
+			ImGui::SetTooltip("%s", UiText("P4_COLORHITSTUNTEXTD"));
 #endif
 
 
@@ -3142,9 +3162,9 @@ static void TheExtraDataTab()
 //For Recording And Playback Stuff.
 static void TheRecordPlaybackTab()
 {
-	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P6_RECORDPLAYBACK", DefaultLanguage)).c_str()))
+	if (ImGui::BeginTabItem(UiLabel("P6_RECORDPLAYBACK").c_str()))
 	{
-		ImGui::Text((getLocalizedString(LocalMap, "P5_INCOMINGW", DefaultLanguage)).c_str());
+		ImGui::TextUnformatted(UiText("P5_INCOMINGW"));
 
 		switch (RecordingSlot)
 		{
@@ -3152,7 +3172,7 @@ static void TheRecordPlaybackTab()
 		case 2:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record Both")) {
+				if (ImGui::Button(UiText("REC_BOTH"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -3169,7 +3189,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P1")) {
+				if (ImGui::Button(UiText("REC_P1"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -3185,7 +3205,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P2")) {
+				if (ImGui::Button(UiText("REC_P2"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -3200,7 +3220,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex2P1 > 90 || recordReplayIndex2P2 > 90) {
-				if (ImGui::Button("Stop Recording")) {
+				if (ImGui::Button(UiText("REC_STOP"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -3217,7 +3237,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable2P1 && replayAvailable2P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button("Playback Both")) {
+					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
 						if (CheckTheMode() == true)
 						{
 
@@ -3232,7 +3252,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex2P1 > 90 || recordReplayIndex2P2 > 90) {
-					if (ImGui::Button("Stop Playback"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3246,7 +3266,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable2P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button("Playback P1")) {
+					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -3256,7 +3276,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex2P1 > 90) {
-					if (ImGui::Button("Stop Playback P1"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3269,7 +3289,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable2P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button("Playback P2")) {
+					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -3279,7 +3299,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex2P2 > 90) {
-					if (ImGui::Button("Stop Playback P2"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3293,7 +3313,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button("Save P1 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3319,7 +3339,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Save P2 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3347,7 +3367,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 
-			if (ImGui::Button("Load Recording in P1"))
+			if (ImGui::Button(UiText("REC_LOAD_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3366,7 +3386,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -3379,7 +3399,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -3417,7 +3437,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Load Recording in P2"))
+			if (ImGui::Button(UiText("REC_LOAD_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3436,7 +3456,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -3449,7 +3469,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -3492,7 +3512,7 @@ static void TheRecordPlaybackTab()
 		case 3:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record Both")) {
+				if (ImGui::Button(UiText("REC_BOTH"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -3509,7 +3529,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P1")) {
+				if (ImGui::Button(UiText("REC_P1"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -3525,7 +3545,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P2")) {
+				if (ImGui::Button(UiText("REC_P2"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -3540,7 +3560,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex3P1 > 90 || recordReplayIndex3P2 > 90) {
-				if (ImGui::Button("Stop Recording")) {
+				if (ImGui::Button(UiText("REC_STOP"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -3557,7 +3577,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable3P1 && replayAvailable3P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button("Playback Both")) {
+					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
 						if (CheckTheMode() == true)
 						{
 
@@ -3572,7 +3592,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex3P1 > 90 || recordReplayIndex3P2 > 90) {
-					if (ImGui::Button("Stop Playback"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3586,7 +3606,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable3P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button("Playback P1")) {
+					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -3596,7 +3616,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex3P1 > 90) {
-					if (ImGui::Button("Stop Playback P1"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3609,7 +3629,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable3P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button("Playback P2")) {
+					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -3619,7 +3639,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex3P2 > 90) {
-					if (ImGui::Button("Stop Playback P2"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3633,7 +3653,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button("Save P1 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3659,7 +3679,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Save P2 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3687,7 +3707,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 
-			if (ImGui::Button("Load Recording in P1"))
+			if (ImGui::Button(UiText("REC_LOAD_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3706,7 +3726,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -3719,7 +3739,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -3757,7 +3777,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Load Recording in P2"))
+			if (ImGui::Button(UiText("REC_LOAD_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3776,7 +3796,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -3789,7 +3809,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -3832,7 +3852,7 @@ static void TheRecordPlaybackTab()
 		case 4:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record Both")) {
+				if (ImGui::Button(UiText("REC_BOTH"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -3849,7 +3869,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P1")) {
+				if (ImGui::Button(UiText("REC_P1"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -3865,7 +3885,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P2")) {
+				if (ImGui::Button(UiText("REC_P2"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -3880,7 +3900,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex4P1 > 90 || recordReplayIndex4P2 > 90) {
-				if (ImGui::Button("Stop Recording")) {
+				if (ImGui::Button(UiText("REC_STOP"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -3897,7 +3917,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable4P1 && replayAvailable4P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button("Playback Both")) {
+					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
 						if (CheckTheMode() == true)
 						{
 
@@ -3912,7 +3932,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex4P1 > 90 || recordReplayIndex4P2 > 90) {
-					if (ImGui::Button("Stop Playback"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3926,7 +3946,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable4P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button("Playback P1")) {
+					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -3936,7 +3956,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex4P1 > 90) {
-					if (ImGui::Button("Stop Playback P1"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3949,7 +3969,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable4P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button("Playback P2")) {
+					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -3959,7 +3979,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex4P2 > 90) {
-					if (ImGui::Button("Stop Playback P2"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3973,7 +3993,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button("Save P1 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3999,7 +4019,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Save P2 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4027,7 +4047,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 
-			if (ImGui::Button("Load Recording in P1"))
+			if (ImGui::Button(UiText("REC_LOAD_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4046,7 +4066,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -4059,7 +4079,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -4097,7 +4117,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Load Recording in P2"))
+			if (ImGui::Button(UiText("REC_LOAD_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4116,7 +4136,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -4129,7 +4149,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -4172,7 +4192,7 @@ static void TheRecordPlaybackTab()
 		case 5:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record Both")) {
+				if (ImGui::Button(UiText("REC_BOTH"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -4189,7 +4209,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P1")) {
+				if (ImGui::Button(UiText("REC_P1"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -4205,7 +4225,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P2")) {
+				if (ImGui::Button(UiText("REC_P2"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -4220,7 +4240,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex5P1 > 90 || recordReplayIndex5P2 > 90) {
-				if (ImGui::Button("Stop Recording")) {
+				if (ImGui::Button(UiText("REC_STOP"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -4237,7 +4257,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable5P1 && replayAvailable5P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button("Playback Both")) {
+					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
 						if (CheckTheMode() == true)
 						{
 
@@ -4252,7 +4272,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex5P1 > 90 || recordReplayIndex5P2 > 90) {
-					if (ImGui::Button("Stop Playback"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4266,7 +4286,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable5P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button("Playback P1")) {
+					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -4276,7 +4296,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex5P1 > 90) {
-					if (ImGui::Button("Stop Playback P1"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4289,7 +4309,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable5P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button("Playback P2")) {
+					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -4299,7 +4319,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex5P2 > 90) {
-					if (ImGui::Button("Stop Playback P2"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4313,7 +4333,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button("Save P1 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4339,7 +4359,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Save P2 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4367,7 +4387,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 
-			if (ImGui::Button("Load Recording in P1"))
+			if (ImGui::Button(UiText("REC_LOAD_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4386,7 +4406,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -4399,7 +4419,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -4437,7 +4457,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Load Recording in P2"))
+			if (ImGui::Button(UiText("REC_LOAD_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4456,7 +4476,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -4469,7 +4489,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -4512,7 +4532,7 @@ static void TheRecordPlaybackTab()
 		default:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record Both")) {
+				if (ImGui::Button(UiText("REC_BOTH"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -4530,7 +4550,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P1")) {
+				if (ImGui::Button(UiText("REC_P1"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -4546,7 +4566,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button("Record P2")) {
+				if (ImGui::Button(UiText("REC_P2"))) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -4561,7 +4581,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndexP1 > 90 || recordReplayIndexP2 > 90) {
-				if (ImGui::Button("Stop Recording")) {
+				if (ImGui::Button(UiText("REC_STOP"))) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -4578,7 +4598,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailableP1 && replayAvailableP2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button("Playback Both")) {
+					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
 						if (CheckTheMode() == true)
 						{
 
@@ -4593,7 +4613,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndexP1 > 90 || recordReplayIndexP2 > 90) {
-					if (ImGui::Button("Stop Playback"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4607,7 +4627,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailableP1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button("Playback P1")) {
+					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -4617,7 +4637,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndexP1 > 90) {
-					if (ImGui::Button("Stop Playback P1"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4630,7 +4650,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailableP2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button("Playback P2")) {
+					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -4640,7 +4660,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndexP2 > 90) {
-					if (ImGui::Button("Stop Playback P2"))
+					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4654,7 +4674,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button("Save P1 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4680,7 +4700,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Save P2 Recording"))
+			if (ImGui::Button(UiText("REC_SAVE_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4709,7 +4729,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			//Loads Recordings. To Be Continued....
-			if (ImGui::Button("Load Recording in P1"))
+			if (ImGui::Button(UiText("REC_LOAD_P1")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4728,7 +4748,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -4741,7 +4761,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -4780,7 +4800,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button("Load Recording in P2"))
+			if (ImGui::Button(UiText("REC_LOAD_P2")))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4799,7 +4819,7 @@ static void TheRecordPlaybackTab()
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxA(0, "This file is too big to load.\nThe opened file size is: " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 
 							}
 							else
@@ -4812,7 +4832,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxA(0, "This file is malformed.\nRecording files are assumed to be multiples of 550\nand yet the filesize is : " + ofn.lStructSize, 0, MB_ICONINFORMATION);
+									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
 								}
 								else
 								{
@@ -4855,8 +4875,8 @@ static void TheRecordPlaybackTab()
 
 		if (RecordingSlot)
 		{
-			ImGui::Text("Recording Slot");
-			if (ImGui::SliderInt("Slot", &RecordingSlot, 1, 5))
+			ImGui::TextUnformatted(UiText("REC_SLOT_TITLE"));
+			if (ImGui::SliderInt(UiText("REC_SLOT"), &RecordingSlot, 1, 5))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4871,7 +4891,9 @@ static void TheRecordPlaybackTab()
 DWORD WINAPI MainThread(LPVOID lpReserved)
 {
 	TrainingTeamEditor::InitializeLog(static_cast<HMODULE>(lpReserved));
-
+	GetASIPath();
+	const auto folder = std::filesystem::path(path).parent_path();
+	Localizer::Initialize(folder);
 
 	//Waits a hot moment to ensure that the game's own D3D device is active before doing anything.
 	Sleep(3000);
@@ -4884,7 +4906,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 
 	if (RegisterClassEx(&wc) == 0)
 	{
-		MessageBox(NULL, TEXT("Cannot register the Window Class!"), WindowName_sz, MB_OK | MB_ICONERROR);
+		MessageBoxW(nullptr, Localizer::UiWideText("UI_WINDOW_CLASS").c_str(), L"UMVC3 Training Tools", MB_OK | MB_ICONERROR);
 		return E_FAIL;
 	}
 
@@ -4894,7 +4916,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	//This checks that the window was created successfully.
 	if (hWnd == NULL)
 	{
-		MessageBox(NULL, TEXT("Failed to create the TT Window!"), WindowTitle_sz, MB_OK | MB_ICONERROR);
+		MessageBoxW(nullptr, Localizer::UiWideText("UI_WINDOW_CREATE").c_str(), L"UMVC3 Training Tools", MB_OK | MB_ICONERROR);
 		return E_FAIL;
 	}
 
@@ -4926,37 +4948,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 	io.DisplaySize = wndSize;
 
-	//Gets the path the asi is in currently, then uses that to find the Resources folder.
-	GetASIPath();
-	std::filesystem::path BaseProjectPath = path;
-	std::string Workingpath = path;
-
-	Workingpath = Workingpath.substr(0, Workingpath.find_last_of("\\/"));
-
-	std::string MainFontPath = Workingpath + "\\Resources\\FontToUse.ttf";
-	ImFont* font1 = io.Fonts->AddFontFromFileTTF(MainFontPath.c_str(), 17.0f);
-
-	//For the.csv file.
-	CSVPath = Workingpath + "\\Resources\\3TTAppText.csv";
-	//Check if it exists.
-	if (std::filesystem::exists(CSVPath))
-	{
-		LocalMap = loadLocalizationCSV(CSVPath);
-
-		//Gets the User's Language.
-		std::string UIUserLangauge = getUserUILanguage();
-		std::string ShortLang = UIUserLangauge.substr(0, 2);
-		//switch(ShortLang)
-		//{
-		//default:
-		//	break;
-		//}
-
-	}
-	else {
-		fprintf(stderr, "Unable to open 3TTAppText.csv!\n");
-		exit(-1);
-	}
+	const auto mainFontPath = (folder / "Resources" / "FontToUse.ttf").string();
+	io.Fonts->AddFontFromFileTTF(mainFontPath.c_str(), 17.0f);
 
 	ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
 
@@ -5086,7 +5079,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		// ImGui UI Starts Here!
 		if (ShowToolWindow && quickTrainingSetup)
 		{
-			ImGui::Begin("Quick Training setup", &ShowToolWindow, flags);
+			ImGui::Begin("###QuickTrainingSetup", &ShowToolWindow, flags);
+			TheMenuBar();
 			TrainingPad::DrawSettings();
 			if (TrainingTeamEditor::DrawQuickSetup())
 			{
@@ -5096,9 +5090,9 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			ImGui::End();
 		}
 		else if (ShowToolWindow) {
-			ImGui::Begin("Press F5 to toggle this window.", &ShowToolWindow, flags);
+			ImGui::Begin("###TrainingTools", &ShowToolWindow, flags);
 			TrainingPad::DrawSettings();
-			if (ImGui::Button("Hide window"))
+			if (ImGui::Button(UiText("UI_HIDE")))
 				ShowToolWindow = false;
 			//ImGui::ShowMetricsWindow();
 
@@ -5107,8 +5101,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			TheMenuBar();
 
 			ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(70, 255, 70, 255));
-			ImGui::Text((getLocalizedString(LocalMap, "ACTIVATED_TRUE", DefaultLanguage)).c_str());
-			ImGui::Text((getLocalizedString(LocalMap, "ACTIVATED_TRUE2", DefaultLanguage)).c_str());
+			ImGui::TextUnformatted(UiText("ACTIVATED_TRUE"));
+			ImGui::TextUnformatted(UiText("ACTIVATED_TRUE2"));
 			ImGui::PopStyleColor();
 
 			//Should Speak for Itself.
@@ -5123,9 +5117,11 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 					if (ImGui::BeginTabBar("##tabs"))
 					{
 						if (runTrainingUpdates)
+							TheExtraOptionsTab();
+						TrainingTeamEditor::Draw();
+						if (runTrainingUpdates)
 						{
 							//The other menus.
-							TheExtraOptionsTab();
 							TheStatusOptionsTab();
 							TheCharacterOptionsTab();
 							TheExtraDataTab();
@@ -5136,7 +5132,6 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 							//TheDebugStuffTab();
 #endif
 						}
-						TrainingTeamEditor::Draw();
 
 						ImGui::EndTabBar();
 					}
@@ -5146,7 +5141,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 				{
 					ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255));
 					//ImGui::Text("Choose the characters and get into a match.");
-					ImGui::Text((getLocalizedString(LocalMap, "ACTIVATED_NOTINMATCH", DefaultLanguage)).c_str());
+					ImGui::TextUnformatted(UiText("ACTIVATED_NOTINMATCH"));
 					ImGui::PopStyleColor();
 				}
 			}
@@ -5154,7 +5149,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			{
 				ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 70, 255));
 				//ImGui::Text("Get to Training Mode so this tool can do its thing.");
-				ImGui::Text((getLocalizedString(LocalMap, "ACTIVATED_INMAINMENU", DefaultLanguage)).c_str());
+				ImGui::TextUnformatted(UiText("ACTIVATED_INMAINMENU"));
 				ImGui::PopStyleColor();
 			}
 

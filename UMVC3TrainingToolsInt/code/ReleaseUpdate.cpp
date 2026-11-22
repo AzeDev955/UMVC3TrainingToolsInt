@@ -1,4 +1,5 @@
 #include "ReleaseUpdate.h"
+#include "Localizer.h"
 
 #include <bcrypt.h>
 #include <winhttp.h>
@@ -234,7 +235,7 @@ namespace
 			if (!update)
 				return 0;
 
-			const bool spanish = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_SPANISH;
+			const bool spanish = Localizer::IsSpanish();
 			const auto message = spanish
 				? L"Est\u00e1 disponible UMVC3 Training Tools " + update->tag + L".\n\n\u00bfActualizar ahora? MVC3 se cerrar\u00e1 y volver\u00e1 a abrirse tras la instalaci\u00f3n."
 				: L"UMVC3 Training Tools " + update->tag + L" is available.\n\nUpdate now? MVC3 will close and reopen after installation.";
