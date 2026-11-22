@@ -38,6 +38,8 @@ The installer includes Ultimate ASI Loader x64 for installations without `dinput
 
 To build the installer from a mod release ZIP, run `.\installer\Build-Installer.ps1 -ModZip path-to-zip` in PowerShell.
 
+To compile and verify an installer directly from the source checkout, run `.\installer\Build-Release.ps1` in PowerShell. See the [release workflow](#publicación-en-github) for GitHub Actions.
+
 ## Instalación en Windows
 
 **F5** abre o cierra la ventana de herramientas durante el juego.
@@ -62,6 +64,23 @@ Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busc
 El instalador incluye Ultimate ASI Loader x64 para instalaciones sin `dinput8.dll`. Si actualiza archivos del mod, guarda los originales en la carpeta `UMVC3TrainingToolsInt-Backups`.
 
 Para generar el instalador a partir del ZIP de una versión del mod, ejecuta `.\installer\Build-Installer.ps1 -ModZip ruta-al-zip` en PowerShell.
+
+## Publicación en GitHub
+
+Para compilar y verificar el `.exe` desde el código fuente, ejecuta `.\installer\Build-Release.ps1` en PowerShell. El script actualiza `installer/UMVC3TrainingToolsInt-Setup.exe`.
+
+En GitHub, abre **Actions → Instalador y release de UMVC3 → Run workflow** para generar un instalador de prueba. Puedes descargarlo en **Artifacts** de la ejecución. Las PR a `main` también generan ese artefacto.
+
+Para publicar, integra en `main` el cambio de `VersionTag` y su archivo `changelog/vX.Y.Z.md`. Crea la etiqueta en el commit que quieres publicar y súbela. Por ejemplo, para `v0.9.1`:
+
+```powershell
+git switch main
+git pull --ff-only origin main
+git tag -a v0.9.1 -m v0.9.1
+git push origin refs/tags/v0.9.1
+```
+
+Actions comprueba la etiqueta, compila el mod y publica una release estable con el changelog y `UMVC3TrainingToolsInt-Setup.exe`. Solo se publica al subir una etiqueta nueva.
 
 The next build will return to being internal.
 
