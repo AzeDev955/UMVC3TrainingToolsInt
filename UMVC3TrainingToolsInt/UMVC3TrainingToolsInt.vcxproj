@@ -153,6 +153,7 @@
     <ClInclude Include="code\TrainingTeamEditor.h" />
     <ClInclude Include="code\TrainingShortcut.h" />
     <ClInclude Include="code\TrainingPad.h" />
+    <ClInclude Include="code\ReleaseUpdate.h" />
     <ClInclude Include="code\umvc3utils.h" />
     <ClInclude Include="code\sigscan.h" />
     <ClInclude Include="code\umvc3_sMvc3Main.h" />
@@ -180,6 +181,7 @@
     <ClCompile Include="code\TrainingTeamEditor.cpp" />
     <ClCompile Include="code\TrainingShortcut.cpp" />
     <ClCompile Include="code\TrainingPad.cpp" />
+    <ClCompile Include="code\ReleaseUpdate.cpp" />
     <ClCompile Include="minhook\src\buffer.c" />
     <ClCompile Include="minhook\src\hook.c" />
     <ClCompile Include="minhook\src\trampoline.c" />

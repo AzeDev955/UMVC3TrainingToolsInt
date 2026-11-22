@@ -15,6 +15,7 @@
 #include "code/TrainingTeamEditor.h"
 #include "code/TrainingShortcut.h"
 #include "code/TrainingPad.h"
+#include "code/ReleaseUpdate.h"
 #include "commdlg.h"
 //#include "code\umvc3_sMvc3Main.h"
 //#define _CRTDBG_MAP_ALLOC
@@ -187,11 +188,12 @@ static void TheAboutWindow(bool* p_open)
 	int width = clientRect.right - clientRect.left;
 	int height = clientRect.bottom - clientRect.top;
 	ImGui::SetNextWindowSize(ImVec2(width, (height - 100)));
-	if (!ImGui::Begin("UMVC3 Training Tools Mod V0.8", p_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
+	if (!ImGui::Begin("UMVC3 Training Tools", p_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
 	{
 		ImGui::End();
 		return;
 	}
+	ImGui::Text("Version %s", ReleaseUpdate::VersionTag);
 	ImGui::Text("2023 - 2025 By Eternal Yoshi");
 	ImGui::Separator();
 	ImGui::Text("Thanks To SanHKHaan, Sheep, Techs, anotak, & Gneiss\n for finding the pointers and memeory offsets that\nmade this possible, and Ermmaccer for the\noriginal UMVC3Hook.\n");
@@ -4880,6 +4882,7 @@ static void TheRecordPlaybackTab()
 DWORD WINAPI MainThread(LPVOID lpReserved)
 {
 	TrainingTeamEditor::InitializeLog(static_cast<HMODULE>(lpReserved));
+	ReleaseUpdate::CheckAtStartup();
 
 
 	//Waits a hot moment to ensure that the game's own D3D device is active before doing anything.
@@ -4887,7 +4890,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 
 	// Starts Constructing a separate window to open. Based on code from deleted account xyzzy on cpluscplus.
 	static const TCHAR WindowName_sz[] = TEXT("TT Port Powered by Imgui");
-	static const TCHAR WindowTitle_sz[] = TEXT("UMVC3 Training Tools V0.9B By Eternal Yoshi");
+	static const TCHAR WindowTitle_sz[] = TEXT("UMVC3 Training Tools");
 
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0, 0, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, WindowName_sz, NULL };
 

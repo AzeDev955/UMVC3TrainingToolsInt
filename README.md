@@ -21,6 +21,8 @@ Press **F4** in the game's main menu to open Quick Training. Press **F5** to ope
 
 In Quick Training, enter a name and choose **Save preset** to keep both teams, their assists and order, and the selected stage. Choose a saved setup from **Load preset**, then press **Start Training**. Presets are stored in `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
 
+When MVC3 starts, the mod checks GitHub Releases in the background. If a newer stable version has an installer, you can open the download in your browser. Close MVC3 before running the downloaded installer.
+
 ### Controller
 
 - **View / Select** opens Quick Training from the main menu. **R3** opens the tools window.
@@ -41,6 +43,8 @@ To build the installer from a mod release ZIP, run `.\installer\Build-Installer.
 **F5** abre o cierra la ventana de herramientas durante el juego.
 
 En Quick Training, escribe un nombre y pulsa **Save preset** para guardar ambos equipos, su orden, las asistencias y el escenario. Elige una configuración en **Load preset** y pulsa **Start Training**. Los presets se guardan en `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
+
+Al iniciar MVC3, el mod consulta GitHub Releases en segundo plano. Si hay una versión estable más reciente con instalador, puedes abrir la descarga en el navegador. Cierra MVC3 antes de ejecutar el instalador descargado.
 
 ### Mando
 
