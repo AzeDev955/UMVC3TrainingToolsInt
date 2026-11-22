@@ -260,6 +260,7 @@ internal sealed class InstallerWindow : Form
     private readonly LinkLabel backupLink = new LinkLabel();
     private readonly Button browse = new Button();
     private readonly Button install = new Button();
+    private readonly Button play = new Button();
     private readonly Button close = new Button();
     private bool installing;
     private Status state = Status.Searching;
@@ -267,7 +268,8 @@ internal sealed class InstallerWindow : Form
 
     private enum Status
     {
-        Searching, Detected, Manual, Invalid, Running, Installing, Complete, Permission, Failed, Recovery, InvalidPackage
+        Searching, Detected, Manual, Invalid, Running, Installing, Complete, Permission, Failed, Recovery, InvalidPackage,
+        GameStarted, GameAlreadyRunning, LaunchFailed
     }
 
     internal InstallerWindow()
@@ -294,21 +296,25 @@ internal sealed class InstallerWindow : Form
         status.SetBounds(18, 124, 544, 44);
         backupLink.SetBounds(18, 173, 544, 24);
         backupLink.Visible = false;
-        install.SetBounds(354, 209, 98, 31);
+        install.SetBounds(244, 209, 98, 31);
+        play.SetBounds(354, 209, 98, 31);
         close.SetBounds(464, 209, 98, 31);
 
         browse.Click += Browse;
         install.Click += Install;
+        play.Click += Play;
         close.Click += (sender, args) => Close();
+        executable.TextChanged += (sender, args) => UpdatePlayButton();
         backupLink.LinkClicked += OpenBackup;
         language.SelectedIndexChanged += (sender, args) => Localize();
         Controls.AddRange(new Control[] { heading, languageLabel, language, pathLabel, executable, browse, status,
-            backupLink, install, close });
+            backupLink, install, play, close });
         AcceptButton = install;
         CancelButton = close;
         Shown += DetectGame;
         FormClosing += (sender, args) => { if (installing) args.Cancel = true; };
         Localize();
+        UpdatePlayButton();
     }
 
     private string TextInLanguage(string spanish, string english)
@@ -324,6 +330,7 @@ internal sealed class InstallerWindow : Form
         browse.Text = TextInLanguage("Examinar…", "Browse…");
         backupLink.Text = TextInLanguage("Abrir carpeta de la copia de seguridad", "Open backup folder");
         install.Text = TextInLanguage("Instalar", "Install");
+        play.Text = TextInLanguage("Jugar", "Play");
         close.Text = TextInLanguage("Cerrar", "Close");
         SetStatus(state);
     }
@@ -353,7 +360,8 @@ internal sealed class InstallerWindow : Form
                 status.Text = TextInLanguage("Instalando UMVC3 Training Tools…", "Installing UMVC3 Training Tools…");
                 break;
             case Status.Complete:
-                status.Text = TextInLanguage("Instalación completada. Abre UMVC3.", "Installation complete. Open UMVC3.");
+                status.Text = TextInLanguage("Instalación completada. Pulsa Jugar para abrir UMVC3.",
+                    "Installation complete. Click Play to open UMVC3.");
                 break;
             case Status.Permission:
                 status.Text = TextInLanguage("Carpeta protegida. Ejecuta el instalador como administrador.",
@@ -369,6 +377,15 @@ internal sealed class InstallerWindow : Form
             case Status.InvalidPackage:
                 status.Text = TextInLanguage("Falta un archivo en el instalador. Descarga otra copia.",
                     "The installer is missing a file. Download a fresh copy.");
+                break;
+            case Status.GameStarted:
+                status.Text = TextInLanguage("UMVC3 se está iniciando.", "UMVC3 is starting.");
+                break;
+            case Status.GameAlreadyRunning:
+                status.Text = TextInLanguage("UMVC3 ya está abierto.", "UMVC3 is already running.");
+                break;
+            case Status.LaunchFailed:
+                status.Text = TextInLanguage("No se pudo abrir UMVC3.", "Could not launch UMVC3.");
                 break;
         }
     }
@@ -416,7 +433,7 @@ internal sealed class InstallerWindow : Form
             return;
         }
         installing = true;
-        executable.Enabled = browse.Enabled = install.Enabled = close.Enabled = false;
+        executable.Enabled = browse.Enabled = install.Enabled = play.Enabled = close.Enabled = false;
         ShowBackup(null);
         SetStatus(Status.Installing);
         try
@@ -453,7 +470,55 @@ internal sealed class InstallerWindow : Form
         {
             installing = false;
             executable.Enabled = browse.Enabled = install.Enabled = close.Enabled = true;
-            close.Focus();
+            UpdatePlayButton();
+            if (state == Status.Complete && play.Enabled)
+                play.Focus();
+            else
+                close.Focus();
+        }
+    }
+
+    private string GetPlayableExecutable()
+    {
+        string path = SteamGames.ResolveExecutable(executable.Text);
+        return path != null && File.Exists(Path.Combine(Path.GetDirectoryName(path), "UMVC3TrainingToolsInt.asi"))
+            ? path : null;
+    }
+
+    private void UpdatePlayButton()
+    {
+        play.Enabled = !installing && GetPlayableExecutable() != null;
+    }
+
+    private void Play(object sender, EventArgs args)
+    {
+        string path = GetPlayableExecutable();
+        if (installing || path == null)
+        {
+            UpdatePlayButton();
+            return;
+        }
+
+        try
+        {
+            if (ModInstaller.FindRunningGame(path).HasValue)
+            {
+                SetStatus(Status.GameAlreadyRunning);
+                return;
+            }
+
+            var start = new ProcessStartInfo(path)
+            {
+                WorkingDirectory = Path.GetDirectoryName(path),
+                UseShellExecute = false
+            };
+            using (Process.Start(start))
+                SetStatus(Status.GameStarted);
+        }
+        catch (Win32Exception error)
+        {
+            SetStatus(Status.LaunchFailed);
+            MessageBox.Show(this, status.Text + "\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

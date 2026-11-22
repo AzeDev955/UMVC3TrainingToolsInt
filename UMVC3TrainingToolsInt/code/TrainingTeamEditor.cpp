@@ -44,6 +44,7 @@ namespace
 	constexpr uint32_t ReloadTeams = ReloadPlayer1 | ReloadPlayer2;
 	constexpr DWORD WatchIntervalMs = 500;
 	constexpr ULONGLONG RestartTimeoutMs = 12000;
+	constexpr ULONGLONG RestartSettleMs = 100;
 
 	struct Fighter
 	{
@@ -203,6 +204,13 @@ namespace
 		int nextStep = -1;
 	};
 
+	struct PendingRestart
+	{
+		uintptr_t settings{};
+		uintptr_t action{};
+		ULONGLONG readyAt{};
+	};
+
 	Match draftFrom;
 	std::array<DraftSlot, SlotCount> draft{};
 	std::array<DraftSlot, SlotCount> quickDraft{{
@@ -212,6 +220,7 @@ namespace
 	int quickStage = 0; // Bonne Wonderland.
 	const char* quickSetupStatus = "";
 	Trial trial;
+	PendingRestart pendingRestart;
 	const char* status = "";
 	constexpr wchar_t LogName[] = L"UMVC3TrainingToolsInt-Teams.log";
 	std::filesystem::path logPath;
@@ -690,8 +699,67 @@ void TrainingTeamEditor::RequestTrainingRestart()
 {
 	Match match{};
 	ActionState action{};
-	if (ReadMatch(match) && ReadAction(match.action, action) && IsFighting(action) && !(action.flags & ReloadTeams))
-		Write(match.action + RestartOffset, RestartTraining);
+	if (ReadMatch(match) && ReadAction(match.action, action) && IsFighting(action) && !(action.flags & ReloadTeams)
+		&& Write(match.action + RestartOffset, RestartTraining))
+		pendingRestart = { match.settings, match.action };
+}
+
+void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
+{
+	if (!watchNativeRestart && !pendingRestart.action)
+		return;
+
+	Match match{};
+	ActionState action{};
+	if (!ReadMatch(match) || !ReadAction(match.action, action))
+	{
+		pendingRestart = {};
+		return;
+	}
+	if (pendingRestart.action != match.action || pendingRestart.settings != match.settings)
+		pendingRestart = {};
+	if (watchNativeRestart && action.restart)
+		pendingRestart = { match.settings, match.action };
+	if (!pendingRestart.action)
+		return;
+
+	if (!IsFighting(action) || (action.flags & ReloadTeams))
+	{
+		pendingRestart.readyAt = 0;
+		return;
+	}
+
+	const auto now = GetTickCount64();
+	if (!pendingRestart.readyAt)
+		pendingRestart.readyAt = now + RestartSettleMs;
+	if (now < pendingRestart.readyAt)
+		return;
+
+	LoadedTeams loaded{};
+	if (!ReadLoadedTeams(loaded) || !CheckTheMode())
+		return;
+	GetMainPointers();
+	if (sAction != match.action || sBattleSetting != match.settings
+		|| !Player1TeamTable || !Player2TeamTable || !PointerToGameSpeedA)
+		return;
+	GetPlayerData();
+	if (!P1Character1Data || !P1Character2Data || !P1Character3Data
+		|| !P2Character1Data || !P2Character2Data || !P2Character3Data)
+		return;
+
+	pendingRestart = {};
+	RestartWithChanges();
+	*(float*)(P1Character1Data + 0x50) = p1Pos;
+	*(float*)(P1Character2Data + 0x50) = p1Pos;
+	*(float*)(P1Character3Data + 0x50) = p1Pos;
+	*(float*)(P2Character1Data + 0x50) = p2Pos;
+	*(float*)(P2Character2Data + 0x50) = p2Pos;
+	*(float*)(P2Character3Data + 0x50) = p2Pos;
+	SetIndividualCharacterHealth();
+	SetMeters();
+	GetDebugData();
+	KOToggles();
+	DeathDelay();
 }
 
 void TrainingTeamEditor::TraceQuickShortcut(const char* event)
@@ -807,8 +875,7 @@ bool TrainingTeamEditor::Update()
 			if (action.flags & trial.reloadFlags)
 				ClearReloadFlags(match.action, trial.reloadFlags);
 			trial.pending = false;
-			restarted = true;
-			restartTimer = 0;
+			pendingRestart = { match.settings, match.action };
 			Log(trial.number, "editor completed trial: assists verified, all class IDs verifiable=%d", known);
 			LogLoadedTeams(trial.number, "confirmed loaded", loaded);
 			status = known ? "Loaded fighters and assists match the requested teams."

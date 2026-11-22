@@ -37,15 +37,12 @@ inline uint64_t team1ptr;
 inline uint64_t team2ptr;
 inline int TempA;
 inline int TempB;
-inline unsigned char val;
 #define undefined4 int
 
 //inline static int64 timer = GetTickCount64();
 
 inline float p1Pos = -125.0f;
 inline float p2Pos = 125.0f;
-inline bool restarted = false;
-inline int restartTimer = 0;
 inline int MODOKLOU = 1;
 inline int FrankLevel = 1;
 inline float PrestigePoints = 0.0;

@@ -14,4 +14,5 @@ namespace TrainingTeamEditor
 	void Draw();
 	bool Update();
 	void RequestTrainingRestart();
+	void UpdateTrainingRestart(bool watchNativeRestart);
 }

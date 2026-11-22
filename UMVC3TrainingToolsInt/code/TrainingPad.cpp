@@ -3,9 +3,12 @@
 #include "../gui/imgui/imgui.h"
 
 #include <Xinput.h>
+#include <delayimp.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <string>
 
 namespace
@@ -59,7 +62,19 @@ namespace
 		DWORD button;
 	};
 
+	struct GameInput
+	{
+		DWORD packetOffset{};
+		bool masked{};
+	};
+
 	std::array<Controller, XUSER_MAX_COUNT> controllers{};
+	std::array<GameInput, XUSER_MAX_COUNT> gameInput{};
+	std::mutex gameInputMutex;
+	std::atomic<HWND> menuWindow{ nullptr };
+	std::atomic<GetState> gameGetState{ nullptr };
+	void* volatile* gameStateImport = nullptr;
+	bool gameStateHooked = false;
 	DWORD activeController = XUSER_MAX_COUNT;
 	DWORD suppressedButton = 0;
 	HMODULE ownedXInput = nullptr;
@@ -71,6 +86,95 @@ namespace
 		Binding{ L"ResetTraining", "Reset Training", XINPUT_GAMEPAD_LEFT_THUMB }
 	};
 	const char* settingsStatus = "";
+
+	bool IsNeutral(const XINPUT_GAMEPAD& pad)
+	{
+		return !pad.wButtons
+			&& pad.bLeftTrigger < XINPUT_GAMEPAD_TRIGGER_THRESHOLD
+			&& pad.bRightTrigger < XINPUT_GAMEPAD_TRIGGER_THRESHOLD
+			&& std::abs(pad.sThumbLX) <= XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE
+			&& std::abs(pad.sThumbLY) <= XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE
+			&& std::abs(pad.sThumbRX) <= XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE
+			&& std::abs(pad.sThumbRY) <= XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE;
+	}
+
+	void FilterGameInput(GameInput& input, XINPUT_STATE& state, bool focused)
+	{
+		// Wait for release after closing the menu so its final input does not reach the game.
+		const bool masked = focused || (input.masked && !IsNeutral(state.Gamepad));
+		if (masked != input.masked)
+			++input.packetOffset;
+		input.masked = masked;
+		state.dwPacketNumber += input.packetOffset;
+		if (masked)
+			state.Gamepad = {};
+	}
+
+	DWORD WINAPI GameGetState(DWORD index, XINPUT_STATE* state)
+	{
+		const DWORD result = gameGetState.load()(index, state);
+		const auto window = menuWindow.load();
+		if (window && result == ERROR_SUCCESS && index < gameInput.size())
+		{
+			const std::lock_guard lock(gameInputMutex);
+			FilterGameInput(gameInput[index], *state, GetForegroundWindow() == window);
+		}
+		return result;
+	}
+
+	void* volatile* FindGameStateImport()
+	{
+		const auto base = reinterpret_cast<const BYTE*>(GetModuleHandleW(nullptr));
+		const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+		const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+		const auto& directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT];
+		if (!directory.VirtualAddress)
+			return nullptr;
+
+		const auto imports = reinterpret_cast<const ImgDelayDescr*>(base + directory.VirtualAddress);
+		for (size_t i = 0; i < directory.Size / sizeof(ImgDelayDescr) && imports[i].rvaDLLName; ++i)
+		{
+			const auto& entry = imports[i];
+			if (!(entry.grAttrs & dlattrRva) || _stricmp(reinterpret_cast<const char*>(base + entry.rvaDLLName), "xinput1_3.dll") != 0)
+				continue;
+
+			const auto names = reinterpret_cast<const IMAGE_THUNK_DATA*>(base + entry.rvaINT);
+			for (size_t index = 0; names[index].u1.Ordinal; ++index)
+			{
+				const auto ordinal = names[index].u1.Ordinal;
+				// UMVC3 imports XInputGetState by ordinal 2.
+				if (IMAGE_SNAP_BY_ORDINAL(ordinal) && IMAGE_ORDINAL(ordinal) == 2)
+					return reinterpret_cast<void* volatile*>(reinterpret_cast<uintptr_t>(base) + entry.rvaIAT) + index;
+			}
+		}
+		return nullptr;
+	}
+
+	bool ReplaceGameStateImport(void* expected, void* replacement)
+	{
+		auto* address = const_cast<void**>(gameStateImport);
+		DWORD protection = 0;
+		if (!VirtualProtect(address, sizeof(*address), PAGE_READWRITE, &protection))
+			return false;
+		const bool replaced = InterlockedCompareExchangePointer(gameStateImport, replacement, expected) == expected;
+		DWORD unused = 0;
+		VirtualProtect(address, sizeof(*address), protection, &unused);
+		return replaced;
+	}
+
+	void HookGameState()
+	{
+		if (gameStateHooked || !gameStateImport)
+			return;
+
+		void* current = *gameStateImport;
+		MEMORY_BASIC_INFORMATION memory{};
+		if (!VirtualQuery(current, &memory, sizeof(memory)) || memory.AllocationBase == GetModuleHandleW(nullptr))
+			return; // The import still points to the delay-load thunk in the game.
+
+		gameGetState.store(reinterpret_cast<GetState>(current));
+		gameStateHooked = ReplaceGameStateImport(current, reinterpret_cast<void*>(GameGetState));
+	}
 
 	const Button* FindButton(DWORD mask)
 	{
@@ -117,8 +221,12 @@ namespace
 	}
 }
 
-void TrainingPad::Initialize(HMODULE mod)
+void TrainingPad::Initialize(HMODULE mod, HWND window)
 {
+	menuWindow.store(window);
+	gameStateImport = FindGameStateImport();
+	HookGameState();
+
 	wchar_t modulePath[MAX_PATH]{};
 	const auto length = GetModuleFileNameW(mod, modulePath, MAX_PATH);
 	if (length && length < MAX_PATH)
@@ -160,12 +268,16 @@ void TrainingPad::Initialize(HMODULE mod)
 
 void TrainingPad::Shutdown()
 {
+	menuWindow.store(nullptr);
+	if (gameStateHooked)
+		ReplaceGameStateImport(reinterpret_cast<void*>(GameGetState), reinterpret_cast<void*>(gameGetState.load()));
 	if (ownedXInput)
 		FreeLibrary(ownedXInput);
 }
 
 void TrainingPad::Poll()
 {
+	HookGameState();
 	if (!getState)
 		return;
 

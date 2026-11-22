@@ -15,7 +15,7 @@ Este fork parte del mod original UMVC3TrainingToolsInt, creado por EternalYoshi.
 
 1. Close the game and run `UMVC3TrainingToolsInt-Setup.exe`.
 2. The installer searches your Steam libraries for UMVC3. If it cannot find the game, choose **Browse** and select `umvc3.exe`.
-3. Choose **English** or **Español**, click **Install**, and launch the game.
+3. Choose **English** or **Español**, click **Install**, then click **Play** to launch the game.
 
 Press **F4** in the game's main menu to open Quick Training. Press **F5** to open or close the tools window.
 
@@ -23,8 +23,10 @@ Press **F4** in the game's main menu to open Quick Training. Press **F5** to ope
 
 - **View / Select** opens Quick Training from the main menu. **R3** opens the tools window.
 - Use the D-pad or left stick to navigate and **A / Cross** to confirm. **B / Circle** closes the active dropdown. With no dropdown open, it closes the mod menu and returns focus to the game.
-- **L3** restarts the Training match. To change or disable this shortcut, use **Reset Training** under **Controller shortcuts**. You can also reassign or disable the shortcuts for opening either window there. Changes are saved in `UMVC3TrainingToolsInt.ini`.
+- **L3** restarts Training using the P1 and P2 X positions configured under **Extra → Positioning**, even with the mod menu closed. To change or disable this shortcut, use **Reset Training** under **Controller shortcuts**. You can also reassign or disable the shortcuts for opening either window there. Changes are saved in `UMVC3TrainingToolsInt.ini`.
 - The mod detects XInput controllers, including controllers that Steam Input presents as XInput devices.
+
+While the mod menu has focus, it captures XInput so controller navigation does not affect the game. Release the controls after closing the menu to resume play.
 
 The mod writes its log to `logs/UMVC3TrainingToolsInt-Teams.log` inside the game's folder. On startup it moves the log from older versions into `logs/`.
 
@@ -40,12 +42,14 @@ To build the installer from a mod release ZIP, run `.\installer\Build-Installer.
 
 - **View / Select** abre Quick Training en el menú principal y **R3** abre la ventana de herramientas.
 - Usa la cruceta o el stick izquierdo para navegar y **A / ✕** para confirmar. **B / ○** cierra el desplegable activo o, si no hay ninguno, cierra el menú del mod y devuelve el foco al juego.
-- **L3** reinicia Training durante la partida. Puedes cambiar o desactivar cada atajo en **Controller shortcuts**. Los cambios se guardan en `UMVC3TrainingToolsInt.ini`.
+- **L3** reinicia Training con las posiciones X de P1 y P2 configuradas en **Extra → Positioning**, incluso con el menú del mod cerrado. Puedes cambiar o desactivar cada atajo en **Controller shortcuts**. Los cambios se guardan en `UMVC3TrainingToolsInt.ini`.
 - El mod detecta mandos XInput, incluidos los que Steam Input presenta como XInput.
+
+Mientras el menú del mod tiene el foco, captura la entrada XInput del mando. Al cerrar el menú, suelta los controles para volver a jugar.
 
 El mod guarda su registro en `logs/UMVC3TrainingToolsInt-Teams.log`, dentro de la carpeta del juego. Al iniciar, traslada el registro de las versiones anteriores a `logs/`.
 
-Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busca UMVC3 en las bibliotecas de Steam. Si hace falta, usa **Examinar** para seleccionar `umvc3.exe`. Puedes cambiar el idioma del instalador entre español e inglés. Pulsa **Instalar** y luego abre el juego. Desde el menú principal, **F4** abre Quick Training.
+Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busca UMVC3 en las bibliotecas de Steam. Si hace falta, usa **Examinar** para seleccionar `umvc3.exe`. Puedes cambiar el idioma del instalador entre español e inglés. Pulsa **Instalar** y luego **Jugar** para abrir el juego. Desde el menú principal, **F4** abre Quick Training.
 
 El instalador incluye Ultimate ASI Loader x64 para instalaciones sin `dinput8.dll`. Si actualiza archivos del mod, guarda los originales en la carpeta `UMVC3TrainingToolsInt-Backups`.
 

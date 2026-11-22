@@ -4973,7 +4973,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	ImGui_ImplWin32_Init(hWnd);
 	ImGui_ImplDX9_Init(D3ddev);
 	TrainingShortcut::Initialize(D3ddev);
-	TrainingPad::Initialize(static_cast<HMODULE>(lpReserved));
+	TrainingPad::Initialize(static_cast<HMODULE>(lpReserved), hWnd);
 	bool quickTrainingSetup = false;
 	HWND returnToGame = nullptr;
 	const auto hideTool = [&]()
@@ -5039,6 +5039,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		const bool runTrainingUpdates = TrainingTeamEditor::Update();
 		if (gameFocused && !focusTool && runTrainingUpdates && TrainingPad::Pressed(TrainingPad::Shortcut::ResetTraining))
 			TrainingTeamEditor::RequestTrainingRestart();
+		if (runTrainingUpdates)
+			TrainingTeamEditor::UpdateTrainingRestart(ShowToolWindow && !quickTrainingSetup);
 		if (sAction && runTrainingUpdates) {
 			Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
 			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
@@ -5126,48 +5128,6 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 					{
 						if (runTrainingUpdates)
 						{
-							val = *(uint64_t*)_addr(sAction + 0x118);
-
-							if (val != 0)
-							{
-								restarted = true;
-								restartTimer = 0;
-							}
-							else if (restarted)
-							{
-								restartTimer += 1;
-								if (restartTimer > 5)//0.166667 sec wait
-								{
-									RestartWithChanges();
-
-									{
-										//auto ptr = (P1Character1Data + 0x50);
-										//*((float*)ptr) = p1Pos;
-										*(float*)(P1Character1Data + 0x50) = p1Pos;
-										*(float*)(P1Character2Data + 0x50) = p1Pos;
-										*(float*)(P1Character3Data + 0x50) = p1Pos;
-									}
-									{
-										*(float*)(P2Character1Data + 0x50) = p2Pos;
-										*(float*)(P2Character2Data + 0x50) = p2Pos;
-										*(float*)(P2Character3Data + 0x50) = p2Pos;
-									}
-									restarted = false;
-									SetIndividualCharacterHealth();
-									SetMeters();
-									GetDebugData();
-									KOToggles();
-
-									//std::thread t1(DeathDelay);
-									DeathDelay();
-
-
-								}
-
-
-							}
-
-							char TempByte = *(char*)(0x140289c5a);
 							TickUpdates();
 							//The other menus.
 							TheExtraOptionsTab();
