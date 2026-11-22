@@ -12,9 +12,13 @@
 #include <cstdio>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <numeric>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -176,6 +180,13 @@ namespace
 		int assist;
 	};
 
+	struct QuickPreset
+	{
+		std::string name;
+		TrainingShortcut::TeamPicks picks{};
+		int stage{};
+	};
+
 	struct Match
 	{
 		uintptr_t settings{};
@@ -219,6 +230,12 @@ namespace
 	}};
 	int quickStage = 0; // Bonne Wonderland.
 	const char* quickSetupStatus = "";
+	constexpr size_t PresetNameCapacity = 64;
+	constexpr int PresetVersion = 1;
+	std::filesystem::path quickPresetFolder;
+	std::vector<QuickPreset> quickPresets;
+	char quickPresetName[PresetNameCapacity]{};
+	const char* quickPresetStatus = "";
 	Trial trial;
 	PendingRestart pendingRestart;
 	const char* status = "";
@@ -396,6 +413,164 @@ namespace
 			}
 		}
 		return true;
+	}
+
+	TrainingShortcut::TeamPicks QuickPicks()
+	{
+		TrainingShortcut::TeamPicks picks{};
+		for (int slot = 0; slot < SlotCount; ++slot)
+			picks[slot] = { quickDraft[slot].id, quickDraft[slot].assist };
+		return picks;
+	}
+
+	bool ValidPresetName(std::string_view name)
+	{
+		return !name.empty() && name.size() < PresetNameCapacity && name.find("##") == std::string_view::npos
+			&& std::none_of(name.begin(), name.end(), [](unsigned char c) { return c < 32 || c == 127; });
+	}
+
+	std::filesystem::path PresetPath(std::string_view name)
+	{
+		// Encode the UTF-8 name so it is safe to use as a Windows filename.
+		constexpr wchar_t hex[] = L"0123456789abcdef";
+		std::wstring filename;
+		for (unsigned char c : name)
+		{
+			filename += hex[c >> 4];
+			filename += hex[c & 0xf];
+		}
+		return quickPresetFolder / (filename + L".preset");
+	}
+
+	bool ReadPreset(const std::filesystem::path& path, QuickPreset& preset)
+	{
+		std::ifstream input(path, std::ios::binary);
+		int version = 0;
+		if (!(input >> version >> std::quoted(preset.name) >> preset.stage) || version != PresetVersion
+			|| !ValidPresetName(preset.name) || preset.stage < 0 || preset.stage >= TrainingShortcut::StageCount)
+			return false;
+		for (auto& pick : preset.picks)
+		{
+			if (!(input >> pick.id >> pick.assist))
+				return false;
+		}
+		return (input >> std::ws).eof() && ValidPicks(preset.picks);
+	}
+
+	void RefreshQuickPresets()
+	{
+		quickPresets.clear();
+		wchar_t localAppData[MAX_PATH]{};
+		const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH);
+		if (!length || length >= MAX_PATH)
+		{
+			quickPresetFolder.clear();
+			quickPresetStatus = "Could not find the Quick Training preset folder.";
+			return;
+		}
+		quickPresetFolder = std::filesystem::path(localAppData) / L"UMVC3TrainingToolsInt" / L"QuickTraining";
+		std::error_code error;
+		std::filesystem::create_directories(quickPresetFolder, error);
+		if (error)
+		{
+			quickPresetStatus = "Could not open the Quick Training preset folder.";
+			return;
+		}
+
+		quickPresetStatus = "";
+		const std::filesystem::directory_iterator end;
+		for (std::filesystem::directory_iterator entry(quickPresetFolder, error); !error && entry != end; entry.increment(error))
+		{
+			const auto& path = entry->path();
+			if (path.extension() != L".preset")
+				continue;
+			QuickPreset preset;
+			if (ReadPreset(path, preset) && path.filename() == PresetPath(preset.name).filename())
+				quickPresets.push_back(std::move(preset));
+			else
+				quickPresetStatus = "Some Quick Training presets could not be read.";
+		}
+		if (error)
+			quickPresetStatus = "Could not list all Quick Training presets.";
+		std::sort(quickPresets.begin(), quickPresets.end(), [](const QuickPreset& left, const QuickPreset& right)
+		{
+			return left.name < right.name;
+		});
+	}
+
+	void SaveQuickPreset()
+	{
+		std::string_view name = quickPresetName;
+		const auto first = name.find_first_not_of(' ');
+		if (first != std::string_view::npos)
+			name = name.substr(first, name.find_last_not_of(' ') - first + 1);
+		else
+			name = {};
+		if (!ValidPresetName(name))
+		{
+			quickPresetStatus = "Enter a preset name without ##.";
+			return;
+		}
+		const QuickPreset preset{ std::string(name), QuickPicks(), quickStage };
+		if (!ValidPicks(preset.picks))
+		{
+			quickPresetStatus = "Choose three different fighters and an assist for each team.";
+			return;
+		}
+
+		const auto path = PresetPath(preset.name);
+		wchar_t temporary[MAX_PATH]{};
+		if (quickPresetFolder.empty() || !GetTempFileNameW(quickPresetFolder.c_str(), L"QTP", 0, temporary))
+		{
+			quickPresetStatus = "Could not save the preset.";
+			return;
+		}
+		std::ofstream output(temporary, std::ios::binary);
+		output << PresetVersion << ' ' << std::quoted(preset.name) << ' ' << preset.stage;
+		for (const auto& pick : preset.picks)
+			output << ' ' << pick.id << ' ' << pick.assist;
+		output << '\n';
+		output.close();
+		if (output && MoveFileExW(temporary, path.c_str(), MOVEFILE_WRITE_THROUGH))
+		{
+			RefreshQuickPresets();
+			if (!*quickPresetStatus)
+				quickPresetStatus = "Preset saved.";
+			quickPresetName[0] = '\0';
+			return;
+		}
+
+		const auto error = output ? GetLastError() : ERROR_WRITE_FAULT;
+		DeleteFileW(temporary);
+		quickPresetStatus = error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS
+			? "A preset with that name already exists." : "Could not save the preset.";
+	}
+
+	void DrawQuickPresets()
+	{
+		ImGui::BeginDisabled(quickPresets.empty());
+		if (ImGui::BeginCombo("##QuickPreset", "Load preset"))
+		{
+			for (const auto& preset : quickPresets)
+			{
+				if (ImGui::Selectable(preset.name.c_str()))
+				{
+					for (int slot = 0; slot < SlotCount; ++slot)
+						quickDraft[slot] = { slot, preset.picks[slot].id, preset.picks[slot].assist };
+					quickStage = preset.stage;
+					quickSetupStatus = "";
+					quickPresetStatus = "Preset loaded.";
+				}
+			}
+			ImGui::EndCombo();
+		}
+		ImGui::EndDisabled();
+		ImGui::InputTextWithHint("##QuickPresetName", "Preset name", quickPresetName, sizeof(quickPresetName));
+		ImGui::SameLine();
+		if (ImGui::Button("Save preset"))
+			SaveQuickPreset();
+		if (*quickPresetStatus)
+			ImGui::TextWrapped("%s", quickPresetStatus);
 	}
 
 	bool ValidSelection(const Teams& teams)
@@ -666,11 +841,13 @@ namespace
 void TrainingTeamEditor::OpenQuickSetup()
 {
 	quickSetupStatus = "";
+	RefreshQuickPresets();
 }
 
 bool TrainingTeamEditor::DrawQuickSetup()
 {
 	ImGui::SeparatorText("Quick Training");
+	DrawQuickPresets();
 	ImGui::Combo("Stage", &quickStage, Stages.data(), static_cast<int>(Stages.size()));
 	DrawTeamDraft(quickDraft);
 	if (*quickSetupStatus)
@@ -678,9 +855,7 @@ bool TrainingTeamEditor::DrawQuickSetup()
 
 	if (ImGui::Button("Start Training"))
 	{
-		TrainingShortcut::TeamPicks picks{};
-		for (int slot = 0; slot < SlotCount; ++slot)
-			picks[slot] = { quickDraft[slot].id, quickDraft[slot].assist };
+		const auto picks = QuickPicks();
 		if (!ValidPicks(picks))
 		{
 			TraceQuickShortcut("Start Training rejected: invalid fighter or assist selection");
