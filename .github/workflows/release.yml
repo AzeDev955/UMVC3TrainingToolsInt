@@ -5,7 +5,11 @@ on:
   pull_request:
     branches: [main]
   push:
-    tags: ['v*']
+    branches: [main]
+    paths:
+      - UMVC3TrainingToolsInt/code/ReleaseUpdate.h
+      - .github/workflows/release.yml
+      - .github/scripts/publish-release.sh
 
 permissions:
   contents: read
@@ -15,52 +19,56 @@ jobs:
     name: Compilar y verificar el instalador x64
     runs-on: windows-2022
     timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.package.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Generar el instalador
+        id: package
+        shell: pwsh
+        run: |
+          $installer = ./installer/Build-Release.ps1
+          if ($installer.Name -cnotmatch '^UMVC3TrainingToolsInt-Setup-(v[0-9]+\.[0-9]+\.[0-9]+)\.exe$') {
+            throw 'El nombre del instalador no contiene una versión válida.'
+          }
+          "tag=$($Matches[1])" >> $env:GITHUB_OUTPUT
+          "installer=installer/$($installer.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Subir el instalador como artefacto
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: instalador-umvc3-x64-${{ steps.package.outputs.tag }}
+          path: ${{ steps.package.outputs.installer }}
+          if-no-files-found: error
+
+  publish:
+    name: Publicar release estable
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: umvc3-stable-release
+      queue: max
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Generar el instalador
-        shell: pwsh
-        run: |
-          $output = 'dist/UMVC3TrainingToolsInt-Setup.exe'
-          if ($env:GITHUB_EVENT_NAME -eq 'push') {
-            git merge-base --is-ancestor HEAD refs/remotes/origin/main
-            if ($LASTEXITCODE -ne 0) { throw 'La etiqueta debe apuntar a un commit de main.' }
-            ./installer/Build-Release.ps1 -Output $output -Tag $env:GITHUB_REF_NAME
-          } else {
-            ./installer/Build-Release.ps1 -Output $output
-          }
-
-      - name: Subir el instalador como artefacto
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: instalador-umvc3-x64
-          path: dist/UMVC3TrainingToolsInt-Setup.exe
-          if-no-files-found: error
-
-  publish:
-    name: Publicar release estable
-    if: github.event_name == 'push' && github.event.created && github.ref_type == 'tag'
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: instalador-umvc3-x64
+          name: instalador-umvc3-x64-${{ needs.build.outputs.tag }}
           path: dist
 
       - name: Publicar en GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/UMVC3TrainingToolsInt-Setup.exe \
-            --verify-tag --latest --title "$GITHUB_REF_NAME" --notes-file "changelog/$GITHUB_REF_NAME.md"
+          bash .github/scripts/publish-release.sh "$RELEASE_TAG"

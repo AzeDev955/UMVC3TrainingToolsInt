@@ -77,16 +77,7 @@ Para compilar y verificar el `.exe` desde el código fuente, ejecuta `.\installe
 
 En GitHub, abre **Actions → Instalador y release de UMVC3 → Run workflow** para generar un instalador de prueba. Puedes descargarlo en **Artifacts** de la ejecución. Las PR a `main` también generan ese artefacto.
 
-Para publicar, integra en `main` el cambio de `VersionTag` y su archivo `changelog/vX.Y.Z.md`. Crea la etiqueta en el commit que quieres publicar y súbela. Por ejemplo, para `v0.9.1`:
-
-```powershell
-git switch main
-git pull --ff-only origin main
-git tag -a v0.9.1 -m v0.9.1
-git push origin refs/tags/v0.9.1
-```
-
-Actions comprueba la etiqueta, compila el mod y publica una release estable con el changelog y `UMVC3TrainingToolsInt-Setup.exe`. Solo se publica al subir una etiqueta nueva.
+Para publicar, aumenta `VersionTag` en `UMVC3TrainingToolsInt/code/ReleaseUpdate.h`, añade `changelog/vX.Y.Z.md` y fusiona la PR de `dev` a `main`. GitHub Actions compila el instalador, crea la etiqueta sobre el commit que compiló y publica la release estable con el changelog y `UMVC3TrainingToolsInt-Setup.exe`. El workflow omite versiones ya publicadas o anteriores a una release estable publicada.
 
 The next build will return to being internal.
 
