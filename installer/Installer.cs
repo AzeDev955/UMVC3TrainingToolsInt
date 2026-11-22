@@ -353,7 +353,7 @@ internal sealed class InstallerWindow : Form
                 status.Text = TextInLanguage("Instalando UMVC3 Training Tools…", "Installing UMVC3 Training Tools…");
                 break;
             case Status.Complete:
-                status.Text = TextInLanguage("Instalación completada. Abre UMVC3 y pulsa F4.", "Installation complete. Open UMVC3 and press F4.");
+                status.Text = TextInLanguage("Instalación completada. Abre UMVC3.", "Installation complete. Open UMVC3.");
                 break;
             case Status.Permission:
                 status.Text = TextInLanguage("Carpeta protegida. Ejecuta el instalador como administrador.",
