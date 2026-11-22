@@ -16,7 +16,7 @@ namespace TrainingShortcut
 	constexpr int StageCount = 18;
 
 	void Initialize(IDirect3DDevice9* toolDevice);
-	bool TakeSetupRequest();
+	bool TakeSetupRequest(bool controllerPressed);
 	bool StartTraining(const TeamPicks& picks, int stage);
 	void DispatchTraining();
 }

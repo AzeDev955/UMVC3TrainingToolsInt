@@ -14,6 +14,7 @@
 #include "code\umvc3menu.h"
 #include "code/TrainingTeamEditor.h"
 #include "code/TrainingShortcut.h"
+#include "code/TrainingPad.h"
 #include "commdlg.h"
 //#include "code\umvc3_sMvc3Main.h"
 //#define _CRTDBG_MAP_ALLOC
@@ -4937,7 +4938,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	ImVec2 wndSize((float)width, (float)height);
 
 	ImGuiIO& io = ImGui::GetIO();
-	(void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 	io.DisplaySize = wndSize;
 
 	//Gets the path the asi is in currently, then uses that to find the Resources folder.
@@ -4978,7 +4979,16 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	ImGui_ImplWin32_Init(hWnd);
 	ImGui_ImplDX9_Init(D3ddev);
 	TrainingShortcut::Initialize(D3ddev);
+	TrainingPad::Initialize(static_cast<HMODULE>(lpReserved));
 	bool quickTrainingSetup = false;
+	HWND returnToGame = nullptr;
+	const auto hideTool = [&]()
+	{
+		const bool hadFocus = GetForegroundWindow() == hWnd;
+		ShowWindow(hWnd, SW_HIDE);
+		if (hadFocus && returnToGame)
+			SetForegroundWindow(returnToGame);
+	};
 
 	ZeroMemory(&msg, sizeof(msg));
 
@@ -4989,15 +4999,26 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			continue;
 		}
 
-		const bool toolToggleDown = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
+		const auto foreground = GetForegroundWindow();
+		DWORD foregroundPid = 0;
+		const bool gameFocused = foreground && foreground != hWnd
+			&& GetWindowThreadProcessId(foreground, &foregroundPid) && foregroundPid == GetCurrentProcessId();
+		if (gameFocused)
+			returnToGame = foreground;
 
-		if (toolToggleDown && !toolToggleWasDown) {
+		TrainingPad::Poll();
+		const bool padTools = gameFocused && TrainingPad::Pressed(TrainingPad::Shortcut::Tools);
+		const bool toolToggleDown = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
+		if (padTools || (toolToggleDown && !toolToggleWasDown)) {
 			ShowToolWindow = !ShowToolWindow;
+			if (padTools && ShowToolWindow)
+				quickTrainingSetup = false;
 		}
 
 		toolToggleWasDown = toolToggleDown;
 
-		const bool openQuickSetup = TrainingShortcut::TakeSetupRequest();
+		const bool openQuickSetup = TrainingShortcut::TakeSetupRequest(
+			gameFocused && TrainingPad::Pressed(TrainingPad::Shortcut::QuickTraining));
 		if (openQuickSetup)
 		{
 			TrainingTeamEditor::OpenQuickSetup();
@@ -5005,18 +5026,20 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			ShowToolWindow = true;
 		}
 
+		const bool focusTool = openQuickSetup || (padTools && ShowToolWindow);
 		if (ShowToolWindow) {
 			if (!IsWindowVisible(hWnd))
 				ShowWindow(hWnd, SW_SHOW);
+			if (focusTool)
+				SetForegroundWindow(hWnd);
 			if (openQuickSetup)
 			{
-				SetForegroundWindow(hWnd);
 				TrainingTeamEditor::TraceQuickShortcut(IsWindowVisible(hWnd)
 					? "setup window shown" : "setup window could not be shown");
 			}
 		}
 		else if (IsWindowVisible(hWnd)) {
-			ShowWindow(hWnd, SW_HIDE);
+			hideTool();
 		}
 
 		const bool runTrainingUpdates = TrainingTeamEditor::Update();
@@ -5045,16 +5068,20 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		}
 
 		ImGui_ImplWin32_NewFrame();
+		TrainingPad::UpdateNavigation(GetForegroundWindow() == hWnd);
 		ImGui_ImplDX9_NewFrame();
 		ImGui::NewFrame();
 
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
 		ImGui::SetNextWindowSize(wndSize, ImGuiCond_Always);
+		if (focusTool)
+			ImGui::SetNextWindowFocus();
 
 		// ImGui UI Starts Here!
 		if (quickTrainingSetup)
 		{
 			ImGui::Begin("Quick Training setup", &ShowToolWindow, flags);
+			TrainingPad::DrawSettings();
 			if (TrainingTeamEditor::DrawQuickSetup())
 			{
 				quickTrainingSetup = false;
@@ -5064,6 +5091,9 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		}
 		else {
 			ImGui::Begin("Press F5 to toggle this window.", &ShowToolWindow, flags);
+			TrainingPad::DrawSettings();
+			if (ImGui::Button("Hide window"))
+				ShowToolWindow = false;
 			//ImGui::ShowMetricsWindow();
 
 			// 
@@ -5174,7 +5204,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		ImGui::EndFrame();
 		if (!ShowToolWindow)
 		{
-			ShowWindow(hWnd, SW_HIDE);
+			hideTool();
 			TrainingShortcut::DispatchTraining();
 			continue;
 		}
@@ -5191,6 +5221,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		D3ddev->Present(NULL, NULL, NULL, NULL);
 	}
 
+	TrainingPad::Shutdown();
 	ImGui_ImplDX9_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();

@@ -152,6 +152,7 @@
     <ClInclude Include="code\Localizer.h" />
     <ClInclude Include="code\TrainingTeamEditor.h" />
     <ClInclude Include="code\TrainingShortcut.h" />
+    <ClInclude Include="code\TrainingPad.h" />
     <ClInclude Include="code\umvc3utils.h" />
     <ClInclude Include="code\sigscan.h" />
     <ClInclude Include="code\umvc3_sMvc3Main.h" />
@@ -178,6 +179,7 @@
     <ClCompile Include="code\Localizer.cpp" />
     <ClCompile Include="code\TrainingTeamEditor.cpp" />
     <ClCompile Include="code\TrainingShortcut.cpp" />
+    <ClCompile Include="code\TrainingPad.cpp" />
     <ClCompile Include="minhook\src\buffer.c" />
     <ClCompile Include="minhook\src\hook.c" />
     <ClCompile Include="minhook\src\trampoline.c" />
@@ -190,7 +192,9 @@
     <ClCompile Include="gui\imgui\imgui_demo.cpp" />
     <ClCompile Include="gui\imgui\imgui_draw.cpp" />
     <ClCompile Include="gui\imgui\imgui_impl_dx9.cpp" />
-    <ClCompile Include="gui\imgui\imgui_impl_win32.cpp" />
+    <ClCompile Include="gui\imgui\imgui_impl_win32.cpp">
+      <PreprocessorDefinitions>IMGUI_IMPL_WIN32_DISABLE_GAMEPAD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="gui\imgui\imgui_tables.cpp" />
     <ClCompile Include="gui\imgui\imgui_widgets.cpp" />
     <ClCompile Include="pch.cpp">

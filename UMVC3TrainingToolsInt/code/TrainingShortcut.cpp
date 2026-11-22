@@ -573,7 +573,7 @@ namespace
 	}
 }
 
-bool TrainingShortcut::TakeSetupRequest()
+bool TrainingShortcut::TakeSetupRequest(bool controllerPressed)
 {
 	const auto step = request.load();
 	if (step != Request::None && Pending(step) && step == Request::StageTeams)
@@ -597,16 +597,16 @@ bool TrainingShortcut::TakeSetupRequest()
 	const bool keyDown = (GetAsyncKeyState(VK_F4) & 0x8000) != 0;
 	const bool pressed = keyDown && !keyWasDown && (GetAsyncKeyState(VK_MENU) & 0x8000) == 0;
 	keyWasDown = keyDown;
-	if (pressed)
+	if (pressed || controllerPressed)
 	{
 		const auto foreground = GetForegroundWindow();
 		DWORD pid = 0;
 		if (foreground && GetWindowThreadProcessId(foreground, &pid) && pid == GetCurrentProcessId())
 		{
-			TrainingTeamEditor::TraceQuickShortcut("F4 pressed in game");
+			TrainingTeamEditor::TraceQuickShortcut(controllerPressed ? "controller shortcut pressed in game" : "F4 pressed in game");
 			if (foreground != toolWindow)
 				gameWindow.store(foreground);
-			if (!fromButton && RequestSetup("F4 requested the setup"))
+			if (!fromButton && RequestSetup(controllerPressed ? "controller requested the setup" : "F4 requested the setup"))
 				return true;
 		}
 	}
