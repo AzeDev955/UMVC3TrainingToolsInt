@@ -4,6 +4,6 @@
 
 namespace ReleaseUpdate
 {
-	inline constexpr char VersionTag[] = "v0.9.7";
+	inline constexpr char VersionTag[] = "v0.9.8";
 	void CheckAtStartup(HWND toolWindow);
 }
