@@ -1023,8 +1023,6 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 	}
 
 	const auto now = GetTickCount64();
-	if (!pendingRestart.readyAt)
-		pendingRestart.readyAt = now + RestartSettleMs;
 	if (now < pendingRestart.readyAt)
 		return;
 
@@ -1040,15 +1038,22 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 		|| !P2Character1Data || !P2Character2Data || !P2Character3Data)
 		return;
 
-	const auto positions = pendingRestart.positions.value_or(XPositions{ p1Pos, p2Pos });
+	if (!pendingRestart.readyAt)
+	{
+		const auto positions = pendingRestart.positions.value_or(XPositions{ p1Pos, p2Pos });
+		*(float*)(P1Character1Data + 0x50) = positions.p1;
+		*(float*)(P1Character2Data + 0x50) = positions.p1;
+		*(float*)(P1Character3Data + 0x50) = positions.p1;
+		*(float*)(P2Character1Data + 0x50) = positions.p2;
+		*(float*)(P2Character2Data + 0x50) = positions.p2;
+		*(float*)(P2Character3Data + 0x50) = positions.p2;
+		// Only the remaining settings need the settle delay.
+		pendingRestart.readyAt = now + RestartSettleMs;
+		return;
+	}
+
 	pendingRestart = {};
 	RestartWithChanges();
-	*(float*)(P1Character1Data + 0x50) = positions.p1;
-	*(float*)(P1Character2Data + 0x50) = positions.p1;
-	*(float*)(P1Character3Data + 0x50) = positions.p1;
-	*(float*)(P2Character1Data + 0x50) = positions.p2;
-	*(float*)(P2Character2Data + 0x50) = positions.p2;
-	*(float*)(P2Character3Data + 0x50) = positions.p2;
 	SetIndividualCharacterHealth();
 	SetMeters();
 	GetDebugData();
