@@ -10,8 +10,9 @@ The public build has 5 pages.
 ### Mando
 
 - **View / Select** abre Quick Training en el menú principal y **R3** abre la ventana de herramientas.
-- Usa la cruceta o el stick izquierdo para navegar, **A / ✕** para confirmar y **B / ○** para volver dentro de los menús. En la ventana principal, **Hide window** devuelve el foco al juego.
-- Cambia los dos botones en **Controller shortcuts**. Se guardan en `UMVC3TrainingToolsInt.ini`. El mod detecta mandos XInput, incluidos los que Steam Input presenta como XInput.
+- Usa la cruceta o el stick izquierdo para navegar y **A / ✕** para confirmar. **B / ○** cierra el desplegable activo o, si no hay ninguno, cierra el menú del mod y devuelve el foco al juego.
+- **L3** reinicia Training durante la partida. Puedes cambiar o desactivar cada atajo en **Controller shortcuts**. Los cambios se guardan en `UMVC3TrainingToolsInt.ini`.
+- El mod detecta mandos XInput, incluidos los que Steam Input presenta como XInput.
 
 El mod guarda su registro en `logs/UMVC3TrainingToolsInt-Teams.log`, dentro de la carpeta del juego. Al iniciar, traslada el registro de las versiones anteriores a `logs/`.
 

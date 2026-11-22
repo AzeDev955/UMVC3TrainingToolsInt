@@ -686,6 +686,14 @@ bool TrainingTeamEditor::DrawQuickSetup()
 	return ImGui::Button("Cancel");
 }
 
+void TrainingTeamEditor::RequestTrainingRestart()
+{
+	Match match{};
+	ActionState action{};
+	if (ReadMatch(match) && ReadAction(match.action, action) && IsFighting(action) && !(action.flags & ReloadTeams))
+		Write(match.action + RestartOffset, RestartTraining);
+}
+
 void TrainingTeamEditor::TraceQuickShortcut(const char* event)
 {
 	Log(0, "quick training: %s", event);

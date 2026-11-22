@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <string>
 
 namespace
 {
@@ -51,14 +52,24 @@ namespace
 		bool connected{};
 	};
 
+	struct Binding
+	{
+		const wchar_t* key;
+		const char* label;
+		DWORD button;
+	};
+
 	std::array<Controller, XUSER_MAX_COUNT> controllers{};
 	DWORD activeController = XUSER_MAX_COUNT;
 	DWORD suppressedButton = 0;
 	HMODULE ownedXInput = nullptr;
 	GetState getState = nullptr;
 	std::filesystem::path configPath;
-	DWORD quickButton = XINPUT_GAMEPAD_BACK;
-	DWORD toolsButton = XINPUT_GAMEPAD_RIGHT_THUMB;
+	std::array bindings{
+		Binding{ L"QuickTraining", "Quick Training", XINPUT_GAMEPAD_BACK },
+		Binding{ L"Tools", "Tool window", XINPUT_GAMEPAD_RIGHT_THUMB },
+		Binding{ L"ResetTraining", "Reset Training", XINPUT_GAMEPAD_LEFT_THUMB }
+	};
 	const char* settingsStatus = "";
 
 	const Button* FindButton(DWORD mask)
@@ -68,34 +79,31 @@ namespace
 		return button == std::end(Buttons) ? nullptr : button;
 	}
 
-	bool SaveBindings(DWORD quick, DWORD tools)
+	bool SaveBinding(const Binding& binding, DWORD button)
 	{
 		if (configPath.empty())
 			return false;
 
-		wchar_t values[80]{};
-		const int length = swprintf_s(values, L"QuickTraining=%lu", quick);
-		swprintf_s(values + length + 1, std::size(values) - length - 1, L"Tools=%lu", tools);
-		return WritePrivateProfileSectionW(Section, values, configPath.c_str()) != 0;
+		const auto value = std::to_wstring(button);
+		return WritePrivateProfileStringW(Section, binding.key, value.c_str(), configPath.c_str()) != 0;
 	}
 
-	void DrawBinding(const char* label, DWORD& binding, DWORD other, bool isQuick)
+	void DrawBinding(Binding& binding)
 	{
-		if (!ImGui::BeginCombo(label, FindButton(binding)->label))
+		if (!ImGui::BeginCombo(binding.label, FindButton(binding.button)->label))
 			return;
 
 		for (const auto& button : Buttons)
 		{
-			const bool selected = binding == button.mask;
-			const bool duplicate = button.mask != 0 && button.mask == other;
+			const bool selected = binding.button == button.mask;
+			const bool duplicate = button.mask != 0 && std::any_of(bindings.begin(), bindings.end(),
+				[&](const Binding& other) { return &binding != &other && other.button == button.mask; });
 			ImGui::BeginDisabled(duplicate);
 			if (ImGui::Selectable(button.label, selected) && !selected)
 			{
-				const DWORD quick = isQuick ? button.mask : quickButton;
-				const DWORD tools = isQuick ? toolsButton : button.mask;
-				if (SaveBindings(quick, tools))
+				if (SaveBinding(binding, button.mask))
 				{
-					binding = button.mask;
+					binding.button = button.mask;
 					settingsStatus = "";
 				}
 				else
@@ -116,12 +124,17 @@ void TrainingPad::Initialize(HMODULE mod)
 	if (length && length < MAX_PATH)
 	{
 		configPath = std::filesystem::path(modulePath).parent_path() / L"UMVC3TrainingToolsInt.ini";
-		const auto quick = GetPrivateProfileIntW(Section, L"QuickTraining", quickButton, configPath.c_str());
-		const auto tools = GetPrivateProfileIntW(Section, L"Tools", toolsButton, configPath.c_str());
-		if (FindButton(quick) && FindButton(tools) && (quick == 0 || quick != tools))
+		// Keep existing opening shortcuts when an older configuration already uses L3.
+		for (auto binding = bindings.begin(); binding != bindings.end(); ++binding)
 		{
-			quickButton = quick;
-			toolsButton = tools;
+			const auto saved = GetPrivateProfileIntW(Section, binding->key, binding->button, configPath.c_str());
+			if (FindButton(saved))
+				binding->button = saved;
+			if (std::any_of(bindings.begin(), binding,
+				[&](const Binding& previous) { return previous.button == binding->button; }))
+			{
+				binding->button = 0;
+			}
 		}
 	}
 
@@ -196,7 +209,7 @@ void TrainingPad::Poll()
 
 bool TrainingPad::Pressed(Shortcut shortcut)
 {
-	const DWORD mask = shortcut == Shortcut::QuickTraining ? quickButton : toolsButton;
+	const DWORD mask = bindings[static_cast<size_t>(shortcut)].button;
 	for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index)
 	{
 		if (controllers[index].pressed & mask)
@@ -246,8 +259,8 @@ void TrainingPad::DrawSettings()
 	else
 		ImGui::TextDisabled("No XInput controller detected.");
 
-	DrawBinding("Quick Training", quickButton, toolsButton, true);
-	DrawBinding("Tool window", toolsButton, quickButton, false);
+	for (auto& binding : bindings)
+		DrawBinding(binding);
 	if (*settingsStatus)
 		ImGui::TextWrapped("%s", settingsStatus);
 }

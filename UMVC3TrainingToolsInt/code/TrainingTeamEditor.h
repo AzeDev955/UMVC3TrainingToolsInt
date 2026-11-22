@@ -13,4 +13,5 @@ namespace TrainingTeamEditor
 	bool PrepareQuickMatch(const TrainingShortcut::TeamPicks& picks);
 	void Draw();
 	bool Update();
+	void RequestTrainingRestart();
 }

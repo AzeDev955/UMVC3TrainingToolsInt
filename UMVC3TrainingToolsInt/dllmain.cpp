@@ -270,13 +270,7 @@ static void TheExtraOptionsTab()
 			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_RESTARTREADYD", DefaultLanguage)).c_str());
 
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_RESTARTTRAINING", DefaultLanguage)).c_str()))
-		{
-			if (CheckTheMode() == true)
-			{
-				int RestartValue = 3;
-				*(char*)(sAction + 0x118) = RestartValue;
-			}
-		}
+			TrainingTeamEditor::RequestTrainingRestart();
 
 		ImGui::SeparatorText((getLocalizedString(LocalMap, "P1_POSITIONING", DefaultLanguage)).c_str());
 
@@ -5043,6 +5037,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		}
 
 		const bool runTrainingUpdates = TrainingTeamEditor::Update();
+		if (gameFocused && !focusTool && runTrainingUpdates && TrainingPad::Pressed(TrainingPad::Shortcut::ResetTraining))
+			TrainingTeamEditor::RequestTrainingRestart();
 		if (sAction && runTrainingUpdates) {
 			Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
 			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
@@ -5067,10 +5063,19 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			ResizeD3D9Device(width, height);
 		}
 
+		const bool toolFocused = GetForegroundWindow() == hWnd;
+		// ImGui can close a dropdown with B during NewFrame.
+		const bool hadPopup = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 		ImGui_ImplWin32_NewFrame();
-		TrainingPad::UpdateNavigation(GetForegroundWindow() == hWnd);
+		TrainingPad::UpdateNavigation(toolFocused);
 		ImGui_ImplDX9_NewFrame();
 		ImGui::NewFrame();
+
+		if (toolFocused && !hadPopup && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
+		{
+			quickTrainingSetup = false;
+			ShowToolWindow = false;
+		}
 
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
 		ImGui::SetNextWindowSize(wndSize, ImGuiCond_Always);
@@ -5078,7 +5083,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			ImGui::SetNextWindowFocus();
 
 		// ImGui UI Starts Here!
-		if (quickTrainingSetup)
+		if (ShowToolWindow && quickTrainingSetup)
 		{
 			ImGui::Begin("Quick Training setup", &ShowToolWindow, flags);
 			TrainingPad::DrawSettings();
@@ -5089,7 +5094,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			}
 			ImGui::End();
 		}
-		else {
+		else if (ShowToolWindow) {
 			ImGui::Begin("Press F5 to toggle this window.", &ShowToolWindow, flags);
 			TrainingPad::DrawSettings();
 			if (ImGui::Button("Hide window"))

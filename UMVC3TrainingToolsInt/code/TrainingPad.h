@@ -4,7 +4,7 @@
 
 namespace TrainingPad
 {
-	enum class Shortcut { QuickTraining, Tools };
+	enum class Shortcut { QuickTraining, Tools, ResetTraining };
 
 	void Initialize(HMODULE mod);
 	void Shutdown();
