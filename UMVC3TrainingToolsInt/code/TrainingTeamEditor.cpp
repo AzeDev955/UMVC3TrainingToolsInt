@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <string_view>
@@ -185,6 +186,15 @@ namespace
 		std::string name;
 		TrainingShortcut::TeamPicks picks{};
 		int stage{};
+
+		bool operator==(const QuickPreset& other) const
+		{
+			return name == other.name && stage == other.stage
+				&& std::equal(picks.begin(), picks.end(), other.picks.begin(), [](const auto& left, const auto& right)
+				{
+					return left.id == right.id && left.assist == right.assist;
+				});
+		}
 	};
 
 	struct Match
@@ -235,6 +245,7 @@ namespace
 	constexpr int PresetVersion = 1;
 	std::filesystem::path quickPresetFolder;
 	std::vector<QuickPreset> quickPresets;
+	std::optional<QuickPreset> selectedQuickPreset;
 	char quickPresetName[PresetNameCapacity]{};
 	const char* quickPresetStatus = "";
 	Trial trial;
@@ -498,9 +509,36 @@ namespace
 		{
 			return left.name < right.name;
 		});
+		if (selectedQuickPreset && std::none_of(quickPresets.begin(), quickPresets.end(), [](const QuickPreset& preset)
+			{ return preset.name == selectedQuickPreset->name; }))
+			selectedQuickPreset.reset();
 	}
 
-	void SaveQuickPreset()
+	std::unique_ptr<void, decltype(&CloseHandle)> LockQuickPresets()
+	{
+		HANDLE file = INVALID_HANDLE_VALUE;
+		if (!quickPresetFolder.empty())
+		{
+			const auto path = quickPresetFolder / L".edit.lock";
+			file = CreateFileW(path.c_str(), GENERIC_WRITE | DELETE, 0, nullptr, OPEN_ALWAYS,
+				FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+		}
+		if (file == INVALID_HANDLE_VALUE)
+			quickPresetStatus = "Could not open the preset folder for editing. Try again.";
+		return { file == INVALID_HANDLE_VALUE ? nullptr : file, CloseHandle };
+	}
+
+	bool CheckSelectedQuickPreset(const std::filesystem::path& path)
+	{
+		QuickPreset current;
+		if (ReadPreset(path, current) && current == *selectedQuickPreset)
+			return true;
+		RefreshQuickPresets();
+		quickPresetStatus = "The saved preset changed. Load it again to edit it.";
+		return false;
+	}
+
+	void SaveQuickPreset(bool update = false)
 	{
 		std::string_view name = quickPresetName;
 		const auto first = name.find_first_not_of(' ');
@@ -520,9 +558,18 @@ namespace
 			return;
 		}
 
+		const auto lock = LockQuickPresets();
+		if (!lock || (update && !selectedQuickPreset))
+			return;
+		const auto previous = update ? PresetPath(selectedQuickPreset->name) : std::filesystem::path{};
+		if (update && !CheckSelectedQuickPreset(previous))
+			return;
+
 		const auto path = PresetPath(preset.name);
+		const bool rename = update && path != previous;
+		const DWORD flags = MOVEFILE_WRITE_THROUGH | (update && !rename ? MOVEFILE_REPLACE_EXISTING : 0);
 		wchar_t temporary[MAX_PATH]{};
-		if (quickPresetFolder.empty() || !GetTempFileNameW(quickPresetFolder.c_str(), L"QTP", 0, temporary))
+		if (!GetTempFileNameW(quickPresetFolder.c_str(), L"QTP", 0, temporary))
 		{
 			quickPresetStatus = "Could not save the preset.";
 			return;
@@ -533,12 +580,21 @@ namespace
 			output << ' ' << pick.id << ' ' << pick.assist;
 		output << '\n';
 		output.close();
-		if (output && MoveFileExW(temporary, path.c_str(), MOVEFILE_WRITE_THROUGH))
+		if (output && MoveFileExW(temporary, path.c_str(), flags))
 		{
+			if (rename && !DeleteFileW(previous.c_str()))
+			{
+				const bool restored = DeleteFileW(path.c_str()) != FALSE;
+				RefreshQuickPresets();
+				quickPresetStatus = restored ? "Could not rename the preset. The original was kept."
+					: "Could not remove the original preset. Both names are still available.";
+				return;
+			}
+			selectedQuickPreset = preset;
+			std::snprintf(quickPresetName, sizeof(quickPresetName), "%s", preset.name.c_str());
 			RefreshQuickPresets();
 			if (!*quickPresetStatus)
-				quickPresetStatus = "Preset saved.";
-			quickPresetName[0] = '\0';
+				quickPresetStatus = update ? "Preset updated." : "Preset saved.";
 			return;
 		}
 
@@ -548,29 +604,83 @@ namespace
 			? "A preset with that name already exists." : "Could not save the preset.";
 	}
 
+	void DeleteQuickPreset()
+	{
+		const auto lock = LockQuickPresets();
+		if (!lock || !selectedQuickPreset)
+			return;
+		const auto path = PresetPath(selectedQuickPreset->name);
+		if (!CheckSelectedQuickPreset(path))
+			return;
+		if (!DeleteFileW(path.c_str()))
+		{
+			quickPresetStatus = "Could not delete the preset.";
+			return;
+		}
+		selectedQuickPreset.reset();
+		quickPresetName[0] = '\0';
+		RefreshQuickPresets();
+		if (!*quickPresetStatus)
+			quickPresetStatus = "Preset deleted.";
+	}
+
 	void DrawQuickPresets()
 	{
 		ImGui::BeginDisabled(quickPresets.empty());
-		if (ImGui::BeginCombo("##QuickPreset", "Load preset"))
+		const char* preview = selectedQuickPreset ? selectedQuickPreset->name.c_str() : "Load preset";
+		if (ImGui::BeginCombo("##QuickPreset", preview))
 		{
 			for (const auto& preset : quickPresets)
 			{
-				if (ImGui::Selectable(preset.name.c_str()))
+				const bool selected = selectedQuickPreset && preset.name == selectedQuickPreset->name;
+				if (ImGui::Selectable(preset.name.c_str(), selected))
 				{
+					selectedQuickPreset = preset;
+					std::snprintf(quickPresetName, sizeof(quickPresetName), "%s", preset.name.c_str());
 					for (int slot = 0; slot < SlotCount; ++slot)
 						quickDraft[slot] = { slot, preset.picks[slot].id, preset.picks[slot].assist };
 					quickStage = preset.stage;
 					quickSetupStatus = "";
 					quickPresetStatus = "Preset loaded.";
 				}
+				if (selected)
+					ImGui::SetItemDefaultFocus();
 			}
 			ImGui::EndCombo();
 		}
 		ImGui::EndDisabled();
 		ImGui::InputTextWithHint("##QuickPresetName", "Preset name", quickPresetName, sizeof(quickPresetName));
-		ImGui::SameLine();
-		if (ImGui::Button("Save preset"))
+		if (ImGui::Button(selectedQuickPreset ? "Save as new" : "Save preset"))
 			SaveQuickPreset();
+		if (selectedQuickPreset)
+		{
+			ImGui::SameLine();
+			if (ImGui::Button("Update preset"))
+				SaveQuickPreset(true);
+			ImGui::SameLine();
+			if (ImGui::Button("Delete preset"))
+				ImGui::OpenPopup("Delete team preset");
+		}
+		if (ImGui::BeginPopupModal("Delete team preset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			if (!selectedQuickPreset)
+				ImGui::CloseCurrentPopup();
+			else
+			{
+				ImGui::Text("Delete \"%s\"?", selectedQuickPreset->name.c_str());
+				if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)
+					|| ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
+					ImGui::CloseCurrentPopup();
+				ImGui::SetItemDefaultFocus();
+				ImGui::SameLine();
+				if (ImGui::Button("Delete"))
+				{
+					DeleteQuickPreset();
+					ImGui::CloseCurrentPopup();
+				}
+			}
+			ImGui::EndPopup();
+		}
 		if (*quickPresetStatus)
 			ImGui::TextWrapped("%s", quickPresetStatus);
 	}
