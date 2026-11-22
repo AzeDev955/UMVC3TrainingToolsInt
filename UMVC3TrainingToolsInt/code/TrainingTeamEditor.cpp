@@ -243,7 +243,7 @@ namespace
 		{ 3, 28, 0 }, { 4, 27, 0 }, { 5, 26, 0 }
 	}};
 	int quickStage = 0; // Bonne Wonderland.
-	bool quickDirectLaunch = false;
+	bool quickDirectLaunch = true;
 	const char* quickSetupStatus = "";
 	constexpr size_t PresetNameCapacity = 64;
 	constexpr int PresetVersion = 1;

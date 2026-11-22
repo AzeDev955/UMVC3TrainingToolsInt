@@ -96,7 +96,8 @@ namespace
 	HWND toolWindow = nullptr;
 	IDirect3DDevice9* textureDevice = nullptr;
 	bool textureSpanish = false;
-	IDirect3DTexture9* buttonTexture = nullptr;
+	bool textureLoading = false;
+	IDirect3DTexture9* overlayTexture = nullptr;
 	bool mouseWasDown = false;
 	bool keyWasDown = false;
 	bool firstGameEndScene = true;
@@ -493,13 +494,13 @@ namespace
 
 	void ReleaseTexture()
 	{
-		if (buttonTexture)
-			buttonTexture->Release();
-		buttonTexture = nullptr;
+		if (overlayTexture)
+			overlayTexture->Release();
+		overlayTexture = nullptr;
 		textureDevice = nullptr;
 	}
 
-	bool CreateButtonTexture(IDirect3DDevice9* device, bool spanish)
+	bool CreateOverlayTexture(IDirect3DDevice9* device, bool spanish, bool loading)
 	{
 		HDC dc = CreateCompatibleDC(nullptr);
 		if (!dc)
@@ -531,7 +532,9 @@ namespace
 		HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
 		SetTextColor(dc, RGB(240, 247, 255));
 		SetBkMode(dc, TRANSPARENT);
-		DrawTextW(dc, spanish ? L"Entrenar  [F4]" : L"Training  [F4]", -1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+		const auto label = loading ? Localizer::UiWideText("QUICK_LOADING")
+			: std::wstring(spanish ? L"Entrenar  [F4]" : L"Training  [F4]");
+		DrawTextW(dc, label.c_str(), -1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 		GdiFlush();
 
 		IDirect3DTexture9* texture = nullptr;
@@ -549,9 +552,10 @@ namespace
 						destination[column] = source[row * TextureWidth + column] | 0xff000000u;
 				}
 				texture->UnlockRect(0);
-				buttonTexture = texture;
+				overlayTexture = texture;
 				textureDevice = device;
 				textureSpanish = spanish;
+				textureLoading = loading;
 			}
 			else
 				texture->Release();
@@ -564,7 +568,7 @@ namespace
 		SelectObject(dc, oldBitmap);
 		DeleteObject(bitmap);
 		DeleteDC(dc);
-		return buttonTexture != nullptr;
+		return overlayTexture != nullptr;
 	}
 
 	struct Vertex
@@ -574,39 +578,43 @@ namespace
 		float u, v;
 	};
 
-	void DrawButton(IDirect3DDevice9* device, HWND window, const D3DVIEWPORT9& viewport)
+	void DrawOverlay(IDirect3DDevice9* device, HWND window, const D3DVIEWPORT9& viewport, bool loading)
 	{
 		const bool spanish = Localizer::IsSpanish();
-		if (textureDevice != device || textureSpanish != spanish)
+		if (textureDevice != device || textureSpanish != spanish || textureLoading != loading)
 		{
 			ReleaseTexture();
-			if (!CreateButtonTexture(device, spanish))
+			if (!CreateOverlayTexture(device, spanish, loading))
 				return;
 		}
 
 		const float scale = (std::max)(0.60f, viewport.Height / 720.0f);
-		const float right = viewport.X + viewport.Width - 28.0f * scale;
-		const float bottom = viewport.Y + viewport.Height - 62.0f * scale;
-		const float left = right - 188.0f * scale;
-		const float top = bottom - 46.0f * scale;
-		RECT client{};
-		POINT cursor{};
-		const bool focused = GetForegroundWindow() == window;
+		const float width = (loading ? 224.0f : 188.0f) * scale;
+		const float height = (loading ? 56.0f : 46.0f) * scale;
+		const float left = viewport.X + (loading ? (viewport.Width - width) * 0.5f : viewport.Width - width - 28.0f * scale);
+		const float top = viewport.Y + (loading ? (viewport.Height - height) * 0.5f : viewport.Height - height - 62.0f * scale);
+		const float right = left + width;
+		const float bottom = top + height;
 		bool hovered = false;
-		if (focused && GetClientRect(window, &client) && client.right > 0 && client.bottom > 0
-			&& GetCursorPos(&cursor) && ScreenToClient(window, &cursor))
+		if (!loading)
 		{
-			const float x = viewport.X + static_cast<float>(cursor.x) * viewport.Width / client.right;
-			const float y = viewport.Y + static_cast<float>(cursor.y) * viewport.Height / client.bottom;
-			hovered = x >= left && x < right && y >= top && y < bottom;
+			RECT client{};
+			POINT cursor{};
+			if (GetForegroundWindow() == window && GetClientRect(window, &client) && client.right > 0 && client.bottom > 0
+				&& GetCursorPos(&cursor) && ScreenToClient(window, &cursor))
+			{
+				const float x = viewport.X + static_cast<float>(cursor.x) * viewport.Width / client.right;
+				const float y = viewport.Y + static_cast<float>(cursor.y) * viewport.Height / client.bottom;
+				hovered = x >= left && x < right && y >= top && y < bottom;
+			}
+
+			const bool mouseDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+			if (hovered && mouseDown && !mouseWasDown && RequestSetup("menu button requested the setup"))
+				setupRequested.store(true);
+			mouseWasDown = mouseDown;
 		}
 
-		const bool mouseDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-		if (hovered && mouseDown && !mouseWasDown && RequestSetup("menu button requested the setup"))
-			setupRequested.store(true);
-		mouseWasDown = mouseDown;
-
-		const D3DCOLOR color = hovered ? 0xffffffff : 0xffdce9f5;
+		const D3DCOLOR color = loading || hovered ? 0xffffffff : 0xffdce9f5;
 		const Vertex vertices[]{
 			{ left, top, 0, 1, color, 0, 0 }, { right, top, 0, 1, color, 1, 0 },
 			{ left, bottom, 0, 1, color, 0, 1 }, { right, bottom, 0, 1, color, 1, 1 }
@@ -629,7 +637,7 @@ namespace
 			device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
 			device->SetRenderState(D3DRS_COLORWRITEENABLE, D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN
 				| D3DCOLORWRITEENABLE_BLUE | D3DCOLORWRITEENABLE_ALPHA);
-			device->SetTexture(0, buttonTexture);
+			device->SetTexture(0, overlayTexture);
 			device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
 			device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
 			device->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
@@ -656,12 +664,13 @@ namespace
 				TrainingTeamEditor::TraceQuickShortcut("game EndScene observed");
 				firstGameEndScene = false;
 			}
-			const auto menu = ReadMenu();
-			if (IsReadyMenu(menu, MainMenuPhase, MainMenuTable))
+			const auto step = request.load();
+			const bool loading = step == Request::OpenDirect || step == Request::WaitForBattle;
+			if (loading || IsReadyMenu(ReadMenu(), MainMenuPhase, MainMenuTable))
 			{
 				D3DVIEWPORT9 viewport{};
 				if (SUCCEEDED(device->GetViewport(&viewport)))
-					DrawButton(device, parameters.hFocusWindow, viewport);
+					DrawOverlay(device, parameters.hFocusWindow, viewport, loading);
 			}
 			else if (textureDevice == device)
 				ReleaseTexture();
