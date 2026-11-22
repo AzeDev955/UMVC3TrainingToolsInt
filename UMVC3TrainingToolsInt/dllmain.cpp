@@ -26,8 +26,6 @@ using namespace Memory::VP;
 bool ShowToolWindow = false;
 static bool toolToggleWasDown = false;
 bool ShowAboutWindow = false;
-static int PreviousWidth = 0;
-static int PreviousHeight = 0;
 //For Making the progress bar for blockstun timers blue.
 ImVec4 BStunColor = ImVec4(0.2f, 0.25f, 0.75f, 1.0f);
 
@@ -100,8 +98,9 @@ static bool CreateD3DDevice(HWND hWnd)
 	d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
 	d3dpp.hDeviceWindow = hWnd;
 
+	auto deviceParameters = d3dpp;
 	if (D3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd,
-		D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &D3ddev) < 0)
+		D3DCREATE_SOFTWARE_VERTEXPROCESSING, &deviceParameters, &D3ddev) < 0)
 		return false;
 
 	return true;
@@ -132,9 +131,9 @@ static void ResizeD3D9Device(int width, int height)
 	//Other Released Resources Here.
 	ImGui_ImplDX9_InvalidateDeviceObjects();
 
-	HRESULT Hres = D3ddev->Reset(&d3dpp);
-
-	if (FAILED(Hres) || Hres == D3DERR_DEVICELOST)
+	// Direct3D may clear the back buffer dimensions in the structure passed to Reset.
+	auto deviceParameters = d3dpp;
+	if (FAILED(D3ddev->Reset(&deviceParameters)))
 	{
 		OutputDebugStringA("D3D9Device reset has failed!\n");
 		return;
@@ -241,7 +240,6 @@ static void TheMenuBar()
 
 static void TheExtraOptionsTab()
 {
-	GetMainPointers();
 	//if (ImGui::BeginTabItem("Extra"))
 	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P1_EXTRA", DefaultLanguage)).c_str()))
 	{
@@ -393,7 +391,7 @@ static void TheExtraOptionsTab()
 				P1Char1Speed = 0.01666667;
 			}
 
-			SetGlobalPlayerSpeed(P1Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
 			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_CHARACTERSPEEDP1D", DefaultLanguage)).c_str());
@@ -410,7 +408,7 @@ static void TheExtraOptionsTab()
 				P2Char1Speed = 0.01666667;
 			}
 
-			SetGlobalPlayerSpeed(P2Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_Stationary))
 			ImGui::SetTooltip((getLocalizedString(LocalMap, "P1_CHARACTERSPEEDP2D", DefaultLanguage)).c_str());
@@ -418,7 +416,7 @@ static void TheExtraOptionsTab()
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_NORMALSPEEDP1", DefaultLanguage)).c_str()))
 		{
 			P1Char1Speed = 1;
-			SetGlobalPlayerSpeed(P1Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 
 		ImGui::SameLine();
@@ -426,13 +424,13 @@ static void TheExtraOptionsTab()
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_NORMALSPEEDP2", DefaultLanguage)).c_str()))
 		{
 			P2Char1Speed = 1;
-			SetGlobalPlayerSpeed(P1Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VJOESLOWSPEEDP1", DefaultLanguage)).c_str()))
 		{
 			P1Char1Speed = 0.75;
-			SetGlobalPlayerSpeed(P1Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 
 		ImGui::SameLine();
@@ -440,13 +438,13 @@ static void TheExtraOptionsTab()
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VJOESLOWSPEEDP2", DefaultLanguage)).c_str()))
 		{
 			P2Char1Speed = 0.75;
-			SetGlobalPlayerSpeed(P1Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VALEOFMISTSPEEDP1", DefaultLanguage)).c_str()))
 		{
 			P1Char1Speed = 0.66666666667;
-			SetGlobalPlayerSpeed(P1Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 
 		ImGui::SameLine();
@@ -454,7 +452,7 @@ static void TheExtraOptionsTab()
 		if (ImGui::Button((getLocalizedString(LocalMap, "P1_VALEOFMISTSPEEDP2", DefaultLanguage)).c_str()))
 		{
 			P2Char1Speed = 0.66666666667;
-			SetGlobalPlayerSpeed(P1Char1Speed);
+			SetGlobalPlayerSpeed();
 		}
 
 
@@ -489,7 +487,6 @@ static void TheExtraOptionsTab()
 
 static void TheStatusOptionsTab()
 {
-	GetMainPointers();
 	//Player and Status Related  Settings such as Health.
 	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P2_STATUS", DefaultLanguage)).c_str()))
 	{
@@ -791,7 +788,6 @@ static void TheStatusOptionsTab()
 
 static void TheCharacterOptionsTab()
 {
-	GetMainPointers();
 	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P3_CHARACTER", DefaultLanguage)).c_str()))
 	{
 
@@ -1061,6 +1057,7 @@ static void TheDebugStuffTab()
 		GetHurtboxData();
 		GetHitboxDataPart1();
 		GetHitstunTimers();
+		GetShots();
 
 		ImGui::Separator();
 
@@ -1812,7 +1809,6 @@ static void TheDebugStuffTab()
 
 static void TheIncomingStuffTab()
 {
-	GetMainPointers();
 	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P5_INCOMING", DefaultLanguage)).c_str()))
 	{
 		ImGui::Text((getLocalizedString(LocalMap, "P5_INCOMINGW", DefaultLanguage)).c_str());
@@ -1934,7 +1930,6 @@ static void TheExtraDataTab()
 {
 	if (ImGui::BeginTabItem((getLocalizedString(LocalMap, "P4_DATA", DefaultLanguage)).c_str()))
 	{
-		GetMainPointers();
 		GetPlayerData();
 		//GetHurtboxData();
 		GetHitboxDataPart1();
@@ -4876,7 +4871,6 @@ static void TheRecordPlaybackTab()
 DWORD WINAPI MainThread(LPVOID lpReserved)
 {
 	TrainingTeamEditor::InitializeLog(static_cast<HMODULE>(lpReserved));
-	ReleaseUpdate::CheckAtStartup();
 
 
 	//Waits a hot moment to ensure that the game's own D3D device is active before doing anything.
@@ -4971,6 +4965,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	ImGui_ImplDX9_Init(D3ddev);
 	TrainingShortcut::Initialize(D3ddev);
 	TrainingPad::Initialize(static_cast<HMODULE>(lpReserved), hWnd);
+	ReleaseUpdate::CheckAtStartup(hWnd);
 	bool quickTrainingSetup = false;
 	bool recordingHookInstalled = false;
 	HWND returnToGame = nullptr;
@@ -5065,12 +5060,9 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		const int width = clientRect.right - clientRect.left;
 		const int height = clientRect.bottom - clientRect.top;
 		const ImVec2 wndSize(static_cast<float>(width), static_cast<float>(height));
-		if ((width != PreviousWidth || height != PreviousHeight) && (width != 0 && height != 0))
-		{
-			PreviousWidth = width;
-			PreviousHeight = height;
+		if (width > 0 && height > 0
+			&& (static_cast<UINT>(width) != d3dpp.BackBufferWidth || static_cast<UINT>(height) != d3dpp.BackBufferHeight))
 			ResizeD3D9Device(width, height);
-		}
 
 		const bool toolFocused = GetForegroundWindow() == hWnd;
 		// ImGui can close a dropdown with B during NewFrame.
@@ -5127,15 +5119,11 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 				if (InMatch)
 				{
 					if (runTrainingUpdates)
-					{
 						TickUpdates();
-						GetActiveInstallData();
-					}
 					if (ImGui::BeginTabBar("##tabs"))
 					{
 						if (runTrainingUpdates)
 						{
-							TickUpdates();
 							//The other menus.
 							TheExtraOptionsTab();
 							TheStatusOptionsTab();
@@ -5190,7 +5178,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			D3ddev->EndScene();
 		}
 
-		D3ddev->Present(NULL, NULL, NULL, NULL);
+		if (FAILED(D3ddev->Present(NULL, NULL, NULL, NULL)))
+			Sleep(8);
 	}
 
 	TrainingPad::Shutdown();

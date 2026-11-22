@@ -1,14 +1,20 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $ModZip,
-    [string] $Output = (Join-Path $PSScriptRoot 'UMVC3TrainingToolsInt-Setup.exe'),
+    [string] $Output,
     [string] $LoaderZip,
-    [string] $LoaderLicense
+    [string] $LoaderLicense,
+    [ValidatePattern('\Av[0-9]+\.[0-9]+\.[0-9]+\z')]
+    [string] $Tag
 )
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
+if (!$Output) {
+    if (!$Tag) { throw 'Indica la versión del ZIP con -Tag o proporciona una ruta con -Output.' }
+    $Output = Join-Path $PSScriptRoot "UMVC3TrainingToolsInt-Setup-$Tag.exe"
+}
 $modArchivePath = (Resolve-Path -LiteralPath $ModZip).Path
 $outputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
@@ -66,7 +72,8 @@ try {
     $resources += ('/resource:{0},{1}Ultimate ASI Loader.txt' -f $LoaderLicense, $licensePrefix)
 
     [void] [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($outputPath))
-    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$outputPath" @resources (Join-Path $PSScriptRoot 'Installer.cs')
+    $sources = @((Join-Path $PSScriptRoot 'Installer.cs'), (Join-Path $PSScriptRoot 'UpdateInstaller.cs'))
+    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$outputPath" @resources @sources
     if ($LASTEXITCODE -ne 0) { throw "Falló la compilación del instalador." }
     Get-Item -LiteralPath $outputPath
 }

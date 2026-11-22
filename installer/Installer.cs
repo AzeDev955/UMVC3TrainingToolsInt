@@ -149,6 +149,31 @@ internal static class ModInstaller
     internal static string Install(string executable)
     {
         string folder = Path.GetDirectoryName(executable);
+        string lockPath = Path.Combine(folder, ".umvc3-training-install.lock");
+        using (new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.DeleteOnClose))
+        {
+            if (FindRunningGame(executable).HasValue)
+                throw new IOException("UMVC3 is still running.");
+            return InstallFiles(folder);
+        }
+    }
+
+    internal static void LaunchGame(string executable)
+    {
+        var start = new ProcessStartInfo(executable)
+        {
+            WorkingDirectory = Path.GetDirectoryName(executable),
+            UseShellExecute = false
+        };
+        using (Process process = Process.Start(start))
+        {
+            if (process == null)
+                throw new InvalidOperationException("UMVC3 could not be started.");
+        }
+    }
+
+    private static string InstallFiles(string folder)
+    {
         var files = new List<string>(ModFiles);
         bool installLoader = !File.Exists(Path.Combine(folder, Loader));
         if (installLoader)
@@ -507,13 +532,8 @@ internal sealed class InstallerWindow : Form
                 return;
             }
 
-            var start = new ProcessStartInfo(path)
-            {
-                WorkingDirectory = Path.GetDirectoryName(path),
-                UseShellExecute = false
-            };
-            using (Process.Start(start))
-                SetStatus(Status.GameStarted);
+            ModInstaller.LaunchGame(path);
+            SetStatus(Status.GameStarted);
         }
         catch (Win32Exception error)
         {
@@ -541,10 +561,13 @@ internal sealed class InstallerWindow : Form
     }
 
     [STAThread]
-    private static void Main()
+    private static int Main(string[] arguments)
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (arguments.Length > 0 && UpdateInstaller.IsUpdateCommand(arguments[0]))
+            return UpdateInstaller.Run(arguments);
         Application.Run(new InstallerWindow());
+        return 0;
     }
 }

@@ -74,6 +74,7 @@ namespace
 	std::atomic<HWND> menuWindow{ nullptr };
 	std::atomic<GetState> gameGetState{ nullptr };
 	void* volatile* gameStateImport = nullptr;
+	void* unresolvedGameState = nullptr;
 	bool gameStateHooked = false;
 	DWORD activeController = XUSER_MAX_COUNT;
 	DWORD suppressedButton = 0;
@@ -168,9 +169,16 @@ namespace
 			return;
 
 		void* current = *gameStateImport;
+		if (current == unresolvedGameState)
+			return;
 		MEMORY_BASIC_INFORMATION memory{};
-		if (!VirtualQuery(current, &memory, sizeof(memory)) || memory.AllocationBase == GetModuleHandleW(nullptr))
-			return; // The import still points to the delay-load thunk in the game.
+		if (!VirtualQuery(current, &memory, sizeof(memory)))
+			return;
+		if (memory.AllocationBase == GetModuleHandleW(nullptr))
+		{
+			unresolvedGameState = current;
+			return; // Check again when the delay-load import changes.
+		}
 
 		gameGetState.store(reinterpret_cast<GetState>(current));
 		gameStateHooked = ReplaceGameStateImport(current, reinterpret_cast<void*>(GameGetState));

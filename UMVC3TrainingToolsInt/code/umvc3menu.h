@@ -1183,7 +1183,7 @@ void JammingToggle();
 
 void JammingToggleRestart();
 
-void SetGlobalPlayerSpeed(float GlobalSpeed);
+void SetGlobalPlayerSpeed();
 
 void SetGameSpeed(float GameSpeed);
 
@@ -1202,10 +1202,6 @@ static void GetCharacterHurtboxData(std::vector<Hurtbox> PlayerHurtboxes, int Hu
 void GetHurtboxData();
 
 static void GetCharacterHitboxData(std::vector<Hitbox> PlayerHitboxes, int HitboxCount);
-
-static void GetCharacterHurtboxData(std::vector<Hurtbox> PlayerHurtboxes, int HurtboxCount);
-
-void GetHurtboxData();
 
 void GetHitboxDataPart1();
 
@@ -1229,8 +1225,6 @@ void GetDebugData();
 void ResetSettings();
 
 void LeftSideInputDisplay();
-
-void GetShots();
 
 void GetHitstunTimers();
 
