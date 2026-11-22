@@ -75,6 +75,15 @@
     <ClInclude Include="code\Localizer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="code\TrainingTeamEditor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="code\TrainingShortcut.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="code\TrainingPad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="code\umvc3menu.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -120,6 +129,30 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="code\Localizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="code\TrainingTeamEditor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="code\TrainingShortcut.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="code\TrainingPad.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="minhook\src\buffer.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="minhook\src\hook.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="minhook\src\trampoline.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="minhook\src\hde\hde32.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="minhook\src\hde\hde64.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="code\umvc3menu.cpp">
