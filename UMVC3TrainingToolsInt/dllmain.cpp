@@ -12,6 +12,8 @@
 #include <filesystem>
 #include "code\Localizer.h"
 #include "code\umvc3menu.h"
+#include "code/TrainingTeamEditor.h"
+#include "code/TrainingShortcut.h"
 #include "commdlg.h"
 //#include "code\umvc3_sMvc3Main.h"
 //#define _CRTDBG_MAP_ALLOC
@@ -20,7 +22,7 @@
 
 using namespace Memory::VP;
 bool ShowToolWindow = false;
-static bool F3_last = false;
+static bool toolToggleWasDown = false;
 bool ShowAboutWindow = false;
 static int PreviousWidth = 0;
 static int PreviousHeight = 0;
@@ -56,7 +58,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	switch (msg)
 	{
-		//Intended to make sure that closing the Tool window keeps it available with F3.
+		// Hide the tool window so the shortcut can reopen it.
 	case WM_CLOSE:
 		ShowToolWindow = false;
 		//ShowWindow(hWnd, SW_HIDE);
@@ -4882,6 +4884,7 @@ static void TheRecordPlaybackTab()
 
 DWORD WINAPI MainThread(LPVOID lpReserved)
 {
+	TrainingTeamEditor::InitializeLog(static_cast<HMODULE>(lpReserved));
 
 
 	//Waits a hot moment to ensure that the game's own D3D device is active before doing anything.
@@ -4974,6 +4977,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	ImGui::StyleColorsDark();
 	ImGui_ImplWin32_Init(hWnd);
 	ImGui_ImplDX9_Init(D3ddev);
+	TrainingShortcut::Initialize(D3ddev);
+	bool quickTrainingSetup = false;
 
 	ZeroMemory(&msg, sizeof(msg));
 
@@ -4984,30 +4989,54 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			continue;
 		}
 
-		//Gets the HWND window size.
-		RECT clientRect;
-		GetClientRect(hWnd, &clientRect);
-		int width = clientRect.right - clientRect.left;
-		int height = clientRect.bottom - clientRect.top;
-		ImVec2 wndSize((float)width, (float)height);
+		const bool toolToggleDown = (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
 
-		// This lets us toggle visibility of the window with F3.
-		bool f3_current = (GetAsyncKeyState(VK_F3) & 0x8000);
-
-		if (f3_current && !F3_last) {
+		if (toolToggleDown && !toolToggleWasDown) {
 			ShowToolWindow = !ShowToolWindow;
 		}
 
-		F3_last = f3_current;
+		toolToggleWasDown = toolToggleDown;
 
+		const bool openQuickSetup = TrainingShortcut::TakeSetupRequest();
+		if (openQuickSetup)
+		{
+			TrainingTeamEditor::OpenQuickSetup();
+			quickTrainingSetup = true;
+			ShowToolWindow = true;
+		}
 
 		if (ShowToolWindow) {
-			ShowWindow(hWnd, SW_SHOW);
+			if (!IsWindowVisible(hWnd))
+				ShowWindow(hWnd, SW_SHOW);
+			if (openQuickSetup)
+			{
+				SetForegroundWindow(hWnd);
+				TrainingTeamEditor::TraceQuickShortcut(IsWindowVisible(hWnd)
+					? "setup window shown" : "setup window could not be shown");
+			}
 		}
-		else {
+		else if (IsWindowVisible(hWnd)) {
 			ShowWindow(hWnd, SW_HIDE);
 		}
 
+		const bool runTrainingUpdates = TrainingTeamEditor::Update();
+		if (sAction && runTrainingUpdates) {
+			Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
+			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
+		}
+
+		if (!ShowToolWindow)
+		{
+			TrainingShortcut::DispatchTraining();
+			Sleep(8);
+			continue;
+		}
+
+		RECT clientRect{};
+		GetClientRect(hWnd, &clientRect);
+		const int width = clientRect.right - clientRect.left;
+		const int height = clientRect.bottom - clientRect.top;
+		const ImVec2 wndSize(static_cast<float>(width), static_cast<float>(height));
 		if ((width != PreviousWidth || height != PreviousHeight) && (width != 0 && height != 0))
 		{
 			PreviousWidth = width;
@@ -5022,18 +5051,21 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		ImGui::SetNextWindowPos(ImVec2(0, 0));
 		ImGui::SetNextWindowSize(wndSize, ImGuiCond_Always);
 
-		if (sAction) {
-			Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
-			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
-		}
-
-
 		// ImGui UI Starts Here!
-		if (ShowToolWindow) {
-			ImGui::Begin("Press F3 to toggle this window.", &ShowToolWindow, flags);
+		if (quickTrainingSetup)
+		{
+			ImGui::Begin("Quick Training setup", &ShowToolWindow, flags);
+			if (TrainingTeamEditor::DrawQuickSetup())
+			{
+				quickTrainingSetup = false;
+				ShowToolWindow = false;
+			}
+			ImGui::End();
+		}
+		else {
+			ImGui::Begin("Press F2 to toggle this window.", &ShowToolWindow, flags);
 			//ImGui::ShowMetricsWindow();
 
-			//ImGui::Text("Press F3 to toggle this window.");
 			// 
 			//The Menu Bar.
 			TheMenuBar();
@@ -5050,64 +5082,71 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 				CheckIfInMatch();
 				if (InMatch)
 				{
-					TickUpdates();
-					GetActiveInstallData();
+					if (runTrainingUpdates)
+					{
+						TickUpdates();
+						GetActiveInstallData();
+					}
 					if (ImGui::BeginTabBar("##tabs"))
 					{
-						val = *(uint64_t*)_addr(sAction + 0x118);
+						if (runTrainingUpdates)
+						{
+							val = *(uint64_t*)_addr(sAction + 0x118);
 
-						if (val != 0)
-						{
-							restarted = true;
-							restartTimer = 0;
-						}
-						else if (restarted)
-						{
-							restartTimer += 1;
-							if (restartTimer > 5)//0.166667 sec wait
+							if (val != 0)
 							{
-								RestartWithChanges();
-
+								restarted = true;
+								restartTimer = 0;
+							}
+							else if (restarted)
+							{
+								restartTimer += 1;
+								if (restartTimer > 5)//0.166667 sec wait
 								{
-									//auto ptr = (P1Character1Data + 0x50);
-									//*((float*)ptr) = p1Pos;
-									*(float*)(P1Character1Data + 0x50) = p1Pos;
-									*(float*)(P1Character2Data + 0x50) = p1Pos;
-									*(float*)(P1Character3Data + 0x50) = p1Pos;
-								}
-								{
-									*(float*)(P2Character1Data + 0x50) = p2Pos;
-									*(float*)(P2Character2Data + 0x50) = p2Pos;
-									*(float*)(P2Character3Data + 0x50) = p2Pos;
-								}
-								restarted = false;
-								SetIndividualCharacterHealth();
-								SetMeters();
-								GetDebugData();
-								KOToggles();
+									RestartWithChanges();
 
-								//std::thread t1(DeathDelay);
-								DeathDelay();
+									{
+										//auto ptr = (P1Character1Data + 0x50);
+										//*((float*)ptr) = p1Pos;
+										*(float*)(P1Character1Data + 0x50) = p1Pos;
+										*(float*)(P1Character2Data + 0x50) = p1Pos;
+										*(float*)(P1Character3Data + 0x50) = p1Pos;
+									}
+									{
+										*(float*)(P2Character1Data + 0x50) = p2Pos;
+										*(float*)(P2Character2Data + 0x50) = p2Pos;
+										*(float*)(P2Character3Data + 0x50) = p2Pos;
+									}
+									restarted = false;
+									SetIndividualCharacterHealth();
+									SetMeters();
+									GetDebugData();
+									KOToggles();
+
+									//std::thread t1(DeathDelay);
+									DeathDelay();
+
+
+								}
 
 
 							}
 
-
-						}
-
-						char TempByte = *(char*)(0x140289c5a);
-						TickUpdates();
-						//The other menus.
-						TheExtraOptionsTab();
-						TheStatusOptionsTab();
-						TheCharacterOptionsTab();
-						TheExtraDataTab();
-						TheIncomingStuffTab();
-						TheRecordPlaybackTab();
-						//TheDebugStuffTab();
+							char TempByte = *(char*)(0x140289c5a);
+							TickUpdates();
+							//The other menus.
+							TheExtraOptionsTab();
+							TheStatusOptionsTab();
+							TheCharacterOptionsTab();
+							TheExtraDataTab();
+							TheIncomingStuffTab();
+							TheRecordPlaybackTab();
+							//TheDebugStuffTab();
 #if DEBUG
-						//TheDebugStuffTab();
+							//TheDebugStuffTab();
 #endif
+						}
+						TrainingTeamEditor::Draw();
 
 						ImGui::EndTabBar();
 					}
@@ -5133,6 +5172,12 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		}
 
 		ImGui::EndFrame();
+		if (!ShowToolWindow)
+		{
+			ShowWindow(hWnd, SW_HIDE);
+			TrainingShortcut::DispatchTraining();
+			continue;
+		}
 		D3ddev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
 			D3DCOLOR_RGBA(45, 45, 48, 255), 1.0f, 0);
 

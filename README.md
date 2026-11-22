@@ -3,6 +3,14 @@ This tool adds more options to practice and setup situations that weren't presen
 The recent build uses Mid 2025 revisions Imgui & Sokol with a D3D11 backend.
 The public build has 5 pages.
 
+## Instalación en Windows
+
+Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busca UMVC3 en las bibliotecas de Steam. Si hace falta, usa **Examinar** para seleccionar `umvc3.exe`. Puedes cambiar el idioma del instalador entre español e inglés. Pulsa **Instalar** y luego abre el juego. Desde el menú principal, **F4** abre Quick Training.
+
+El instalador incluye Ultimate ASI Loader x64 para instalaciones sin `dinput8.dll`. Si actualiza archivos del mod, guarda los originales en la carpeta `UMVC3TrainingToolsInt-Backups`.
+
+Para generar el instalador a partir del ZIP de una versión del mod, ejecuta `.\installer\Build-Installer.ps1 -ModZip ruta-al-zip` en PowerShell.
+
 The next build will return to being internal.
 
 Explanations:
