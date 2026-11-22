@@ -37,9 +37,9 @@ The mod writes its log to `logs/UMVC3TrainingToolsInt-Teams.log` inside the game
 
 The installer includes Ultimate ASI Loader x64 for installations without `dinput8.dll`. When it updates mod files, it backs up the originals in `UMVC3TrainingToolsInt-Backups`.
 
-To build the installer from a mod release ZIP, run `.\installer\Build-Installer.ps1 -ModZip path-to-zip` in PowerShell.
+To build the installer from a mod release ZIP, pass its version with `-Tag`, for example `.\installer\Build-Installer.ps1 -ModZip path-to-zip -Tag v0.9.3`.
 
-To compile and verify an installer directly from the source checkout, run `.\installer\Build-Release.ps1` in PowerShell. See the [release workflow](#publicación-en-github) for GitHub Actions.
+To compile and verify an installer directly from the source checkout, run `.\installer\Build-Release.ps1` in PowerShell. It writes `installer/UMVC3TrainingToolsInt-Setup-vX.Y.Z.exe` using the source version. See the [release workflow](#publicación-en-github) for GitHub Actions.
 
 ## Instalación en Windows
 
@@ -65,11 +65,11 @@ Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busc
 
 El instalador incluye Ultimate ASI Loader x64 para instalaciones sin `dinput8.dll`. Si actualiza archivos del mod, guarda los originales en la carpeta `UMVC3TrainingToolsInt-Backups`.
 
-Para generar el instalador a partir del ZIP de una versión del mod, ejecuta `.\installer\Build-Installer.ps1 -ModZip ruta-al-zip` en PowerShell.
+Para generar el instalador a partir del ZIP de una versión del mod, indica su versión con `-Tag`. Por ejemplo, `.\installer\Build-Installer.ps1 -ModZip ruta-al-zip -Tag v0.9.3`.
 
 ## Publicación en GitHub
 
-Para compilar y verificar el `.exe` desde el código fuente, ejecuta `.\installer\Build-Release.ps1` en PowerShell. El script actualiza `installer/UMVC3TrainingToolsInt-Setup.exe`.
+Para compilar y verificar el `.exe` desde el código fuente, ejecuta `.\installer\Build-Release.ps1` en PowerShell. El script actualiza `installer/UMVC3TrainingToolsInt-Setup-vX.Y.Z.exe` con la versión del código.
 
 En GitHub, abre **Actions → Instalador y release de UMVC3 → Run workflow** para generar un instalador de prueba. Puedes descargarlo en **Artifacts** de la ejecución. Las PR a `main` también generan ese artefacto.
 

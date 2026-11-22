@@ -1,5 +1,5 @@
 param(
-    [string] $Output = (Join-Path $PSScriptRoot 'UMVC3TrainingToolsInt-Setup.exe'),
+    [string] $Output,
     [string] $Tag,
     [string] $PlatformToolset,
     [string] $LoaderZip,
@@ -11,7 +11,6 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $project = Join-Path $root 'UMVC3TrainingToolsInt'
-$outputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
 $versionHeader = Get-Content -Raw -LiteralPath (Join-Path $project 'code/ReleaseUpdate.h')
 $version = [regex]::Match($versionHeader, 'VersionTag\[\]\s*=\s*"(v\d+\.\d+\.\d+)"').Groups[1].Value
 if (!$version) { throw 'VersionTag debe tener el formato vX.Y.Z.' }
@@ -19,6 +18,8 @@ if ($Tag -and $Tag -cne $version) { throw "La etiqueta $Tag no coincide con Vers
 if (!(Test-Path -LiteralPath (Join-Path $root "changelog/$version.md") -PathType Leaf)) {
     throw "Falta el changelog de $version."
 }
+if (!$Output) { $Output = Join-Path $PSScriptRoot "UMVC3TrainingToolsInt-Setup-$version.exe" }
+$outputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\Current\Bin\MSBuild.exe' |

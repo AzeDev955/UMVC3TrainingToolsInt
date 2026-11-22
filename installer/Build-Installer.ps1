@@ -1,14 +1,20 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $ModZip,
-    [string] $Output = (Join-Path $PSScriptRoot 'UMVC3TrainingToolsInt-Setup.exe'),
+    [string] $Output,
     [string] $LoaderZip,
-    [string] $LoaderLicense
+    [string] $LoaderLicense,
+    [ValidatePattern('\Av[0-9]+\.[0-9]+\.[0-9]+\z')]
+    [string] $Tag
 )
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
+if (!$Output) {
+    if (!$Tag) { throw 'Indica la versión del ZIP con -Tag o proporciona una ruta con -Output.' }
+    $Output = Join-Path $PSScriptRoot "UMVC3TrainingToolsInt-Setup-$Tag.exe"
+}
 $modArchivePath = (Resolve-Path -LiteralPath $ModZip).Path
 $outputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
