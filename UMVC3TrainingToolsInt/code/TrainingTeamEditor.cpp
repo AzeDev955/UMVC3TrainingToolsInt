@@ -256,7 +256,9 @@ namespace
 	PendingRestart pendingRestart;
 	const char* status = "";
 	constexpr wchar_t LogName[] = L"UMVC3TrainingToolsInt-Teams.log";
+	constexpr wchar_t RecordingLogName[] = L"UMVC3TrainingToolsInt-Recording.log";
 	std::filesystem::path logPath;
+	std::filesystem::path recordingLogPath;
 	SRWLOCK logLock = SRWLOCK_INIT;
 	bool logAvailable = false;
 	bool logInTemp = false;
@@ -270,6 +272,14 @@ namespace
 	unsigned droppedRecordingLogs = 0;
 	SRWLOCK recordingLogLock = SRWLOCK_INIT;
 
+	void WriteLogTimestamp(FILE* file)
+	{
+		SYSTEMTIME time{};
+		GetLocalTime(&time);
+		std::fprintf(file, "%04d-%02d-%02d %02d:%02d:%02d.%03d ",
+			time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds);
+	}
+
 	bool Log(unsigned attempt, const char* format, ...)
 	{
 		AcquireSRWLockExclusive(&logLock);
@@ -277,10 +287,8 @@ namespace
 		const bool opened = !logPath.empty() && _wfopen_s(&file, logPath.c_str(), L"a") == 0;
 		if (opened)
 		{
-			SYSTEMTIME time{};
-			GetLocalTime(&time);
-			std::fprintf(file, "%04d-%02d-%02d %02d:%02d:%02d.%03d attempt=%u ",
-				time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds, attempt);
+			WriteLogTimestamp(file);
+			std::fprintf(file, "attempt=%u ", attempt);
 			va_list args;
 			va_start(args, format);
 			std::vfprintf(file, format, args);
@@ -290,6 +298,24 @@ namespace
 		}
 		ReleaseSRWLockExclusive(&logLock);
 		return opened;
+	}
+
+	void OpenRecordingLog(const std::filesystem::path& directory)
+	{
+		std::error_code error;
+		std::filesystem::create_directories(directory, error);
+		if (error)
+			return;
+
+		const auto path = directory / RecordingLogName;
+		FILE* file = nullptr;
+		if (_wfopen_s(&file, path.c_str(), L"a") != 0)
+			return;
+
+		WriteLogTimestamp(file);
+		std::fprintf(file, "Recording diagnostics started (pid=%lu)\n", GetCurrentProcessId());
+		std::fclose(file);
+		recordingLogPath = path;
 	}
 
 	bool OpenLog(const std::filesystem::path& directory, const std::filesystem::path& previous)
@@ -1114,10 +1140,24 @@ void TrainingTeamEditor::FlushRecordingLog()
 	droppedRecordingLogs = 0;
 	ReleaseSRWLockExclusive(&recordingLogLock);
 
+	if ((!count && !dropped) || recordingLogPath.empty())
+		return;
+
+	FILE* file = nullptr;
+	if (_wfopen_s(&file, recordingLogPath.c_str(), L"a") != 0)
+		return;
+
 	for (size_t index = 0; index < count; ++index)
-		Log(0, "recording: %s", lines[index].data());
+	{
+		WriteLogTimestamp(file);
+		std::fprintf(file, "%s\n", lines[index].data());
+	}
 	if (dropped)
-		Log(0, "recording: dropped %u diagnostic messages", dropped);
+	{
+		WriteLogTimestamp(file);
+		std::fprintf(file, "Dropped %u diagnostic messages\n", dropped);
+	}
+	std::fclose(file);
 }
 
 bool TrainingTeamEditor::PrepareQuickMatch(const TrainingShortcut::TeamPicks& picks)
@@ -1174,15 +1214,22 @@ void TrainingTeamEditor::InitializeLog(HMODULE module)
 	{
 		const auto root = std::filesystem::path(modulePath).parent_path();
 		logAvailable = OpenLog(root / L"logs", root / LogName);
+		OpenRecordingLog(root / L"logs");
 	}
-	if (!logAvailable)
+	if (!logAvailable || recordingLogPath.empty())
 	{
 		std::error_code error;
 		const auto temp = std::filesystem::temp_directory_path(error);
 		if (!error)
 		{
-			logAvailable = OpenLog(temp / L"UMVC3TrainingToolsInt" / L"logs", temp / LogName);
-			logInTemp = logAvailable;
+			const auto directory = temp / L"UMVC3TrainingToolsInt" / L"logs";
+			if (!logAvailable)
+			{
+				logAvailable = OpenLog(directory, temp / LogName);
+				logInTemp = logAvailable;
+			}
+			if (recordingLogPath.empty())
+				OpenRecordingLog(directory);
 		}
 	}
 }
