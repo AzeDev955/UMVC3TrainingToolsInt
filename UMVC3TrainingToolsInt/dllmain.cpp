@@ -3248,6 +3248,7 @@ static void TheRecordPlaybackTab()
 		ImGui::SeparatorText(UiText("REC_REACTIONS"));
 		DrawDummyReaction("REC_REACTION_HIT", DummyOnHit);
 		DrawDummyReaction("REC_REACTION_BLOCK", DummyOnBlock);
+		DrawDummyReaction("REC_REACTION_WAKEUP", DummyOnWakeup);
 		ImGui::TextWrapped("%s", UiText("REC_REACTION_HELP"));
 		ImGui::Separator();
 		if (IsDummyControllerRecording())

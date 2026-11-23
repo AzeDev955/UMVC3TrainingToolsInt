@@ -4470,26 +4470,29 @@ namespace
 		++trace.samples;
 	}
 
-	enum class DummyStun { None, Hit, Block };
+	enum class DummyRecovery { None, Hit, Block, Wakeup };
 	enum class FighterRecoveryTimer : uint32_t { GroundHit = 0, AirHit = 2 };
 	constexpr uintptr_t RecoveryTimerOffset = 0x414c;
 	constexpr uintptr_t GroundHitstunOffset = 0x4154;
 	constexpr uintptr_t BlockstunOffset = 0x4158;
 	constexpr uintptr_t AirHitstunOffset = 0x415c;
+	constexpr uintptr_t FighterActionFlagsOffset = 0x14f4;
 	constexpr uintptr_t HitStateFlagsOffset = 0x14f8;
 	constexpr uintptr_t HitRecoveryFlagsOffset = 0x14fc;
 	constexpr uintptr_t FighterMotionFlagsOffset = 0x1504;
 	constexpr uint32_t AirHitActive = 0x4;
+	constexpr uint32_t AirHitLandingPending = 0x8;
 	constexpr uint32_t AirHitRecoverySuppressed = 0x800000;
 	constexpr uint32_t AirHitMotionSuppressed = 0x8000;
+	constexpr uint32_t WakeupInProgress = 0x80000;
 
 	struct DummyReactionState
 	{
 		uintptr_t action = 0;
 		uintptr_t fighter = 0;
 		uint32_t frame = 0;
-		DummyStun stun = DummyStun::None;
-		DummyStun event = DummyStun::None;
+		DummyRecovery recovery = DummyRecovery::None;
+		DummyRecovery event = DummyRecovery::None;
 		DummyReaction reaction;
 		uint32_t recoveryFrame = 0;
 		int playbackFrame = 0;
@@ -4498,19 +4501,36 @@ namespace
 
 	DummyReactionState dummyReaction;
 
-	const char* StunName(DummyStun stun)
+	const char* RecoveryName(DummyRecovery recovery)
 	{
-		if (stun == DummyStun::Hit)
-			return "hit";
-		return stun == DummyStun::Block ? "block" : "none";
+		switch (recovery)
+		{
+		case DummyRecovery::Hit: return "hit";
+		case DummyRecovery::Block: return "block";
+		case DummyRecovery::Wakeup: return "wakeup";
+		default: return "none";
+		}
+	}
+
+	const DummyReaction& ReactionSettings(DummyRecovery event)
+	{
+		switch (event)
+		{
+		case DummyRecovery::Hit: return DummyOnHit;
+		case DummyRecovery::Block: return DummyOnBlock;
+		case DummyRecovery::Wakeup: return DummyOnWakeup;
+		default:
+			static constexpr DummyReaction disabled{};
+			return disabled;
+		}
 	}
 
 	void TraceDummyEnd(const char* reason, uint32_t frame)
 	{
 		const auto& state = dummyReaction;
-		if (state.event != DummyStun::None)
+		if (state.event != DummyRecovery::None)
 			TrainingTeamEditor::TraceRecording("reaction ended event=%s slot=%d frame=%u played=%d reason=%s",
-				StunName(state.event), state.reaction.slot, frame, state.playbackFrame, reason);
+				RecoveryName(state.event), state.reaction.slot, frame, state.playbackFrame, reason);
 	}
 
 	uintptr_t GetActiveDummy()
@@ -4538,27 +4558,35 @@ namespace
 		return 0;
 	}
 
-	DummyStun ReadDummyStun(uintptr_t fighter)
+	DummyRecovery ReadDummyRecovery(uintptr_t fighter, DummyRecovery previous, bool onWakeupEnabled)
 	{
+		if (onWakeupEnabled && (*reinterpret_cast<const uint32_t*>(fighter + FighterActionFlagsOffset) & WakeupInProgress))
+			return DummyRecovery::Wakeup;
+
 		// The native recovery update selects one timer and can leave inactive timers positive.
 		const auto timer = *reinterpret_cast<const FighterRecoveryTimer*>(fighter + RecoveryTimerOffset);
 		if (timer == FighterRecoveryTimer::GroundHit
 			&& *reinterpret_cast<const float*>(fighter + GroundHitstunOffset) > 0.0f)
-			return DummyStun::Hit;
+			return DummyRecovery::Hit;
+
+		const auto hitFlags = *reinterpret_cast<const uint32_t*>(fighter + HitStateFlagsOffset);
+		// Air hitstun can end just before the game enters wakeup on ground contact.
+		const bool landingPending = onWakeupEnabled && previous == DummyRecovery::Hit
+			&& (hitFlags & AirHitLandingPending);
 		if (timer == FighterRecoveryTimer::AirHit
-			&& (*reinterpret_cast<const uint32_t*>(fighter + HitStateFlagsOffset) & AirHitActive)
+			&& ((hitFlags & AirHitActive) || landingPending)
 			&& !(*reinterpret_cast<const uint32_t*>(fighter + HitRecoveryFlagsOffset) & AirHitRecoverySuppressed)
 			&& !(*reinterpret_cast<const uint32_t*>(fighter + FighterMotionFlagsOffset) & AirHitMotionSuppressed)
 			&& *reinterpret_cast<const float*>(fighter + AirHitstunOffset) > 0.0f)
-			return DummyStun::Hit;
+			return DummyRecovery::Hit;
 		return *reinterpret_cast<const float*>(fighter + BlockstunOffset) > 0.0f
-			? DummyStun::Block : DummyStun::None;
+			? DummyRecovery::Block : DummyRecovery::None;
 	}
 
 	void ApplyDummyReaction(uint8_t* p2Input, bool manualP2PlaybackOrRecording)
 	{
 		auto& state = dummyReaction;
-		if (manualP2PlaybackOrRecording || (!DummyOnHit.slot && !DummyOnBlock.slot))
+		if (manualP2PlaybackOrRecording || (!DummyOnHit.slot && !DummyOnBlock.slot && !DummyOnWakeup.slot))
 		{
 			TraceDummyEnd(manualP2PlaybackOrRecording ? "manual_p2" : "disabled", state.frame);
 			state = {};
@@ -4576,17 +4604,19 @@ namespace
 
 		// The input hook can be used without advancing the battle frame.
 		const auto frame = *reinterpret_cast<const uint32_t*>(action + 0xf0);
-		const auto stun = ReadDummyStun(fighter);
-		if (action != state.action || fighter != state.fighter || frame < state.frame)
+		const bool contextChanged = action != state.action || fighter != state.fighter || frame < state.frame;
+		const auto previous = contextChanged ? DummyRecovery::None : state.recovery;
+		const auto recovery = ReadDummyRecovery(fighter, previous, DummyOnWakeup.slot != 0);
+		if (contextChanged)
 		{
 			TraceDummyEnd("combat_context_changed", frame);
-			TrainingTeamEditor::TraceRecording("reaction tracking frame=%u fighter=%p stun=%s",
-				frame, reinterpret_cast<const void*>(fighter), StunName(stun));
+			TrainingTeamEditor::TraceRecording("reaction tracking frame=%u fighter=%p recovery=%s",
+				frame, reinterpret_cast<const void*>(fighter), RecoveryName(recovery));
 			state = {};
 			state.action = action;
 			state.fighter = fighter;
 			state.frame = frame;
-			state.stun = stun;
+			state.recovery = recovery;
 			return;
 		}
 
@@ -4595,46 +4625,46 @@ namespace
 		if (newFrame)
 			state.lastInput = nullptr;
 
-		const auto previousStun = state.stun;
-		state.stun = stun;
-		if (stun != previousStun)
+		state.recovery = recovery;
+		if (recovery != previous)
 		{
 			const auto timer = *reinterpret_cast<const uint32_t*>(fighter + RecoveryTimerOffset);
 			const auto hitFlags = *reinterpret_cast<const uint32_t*>(fighter + HitStateFlagsOffset);
+			const auto actionFlags = *reinterpret_cast<const uint32_t*>(fighter + FighterActionFlagsOffset);
 			TrainingTeamEditor::TraceRecording(
-				"p2 stun frame=%u from=%s to=%s timer=%u hit_flags=%08X ground=%.2f block=%.2f air=%.2f",
-				frame, StunName(previousStun), StunName(stun), timer, hitFlags,
+				"p2 recovery frame=%u from=%s to=%s timer=%u hit_flags=%08X action_flags=%08X ground=%.2f block=%.2f air=%.2f",
+				frame, RecoveryName(previous), RecoveryName(recovery), timer, hitFlags, actionFlags,
 				*reinterpret_cast<const float*>(fighter + GroundHitstunOffset),
 				*reinterpret_cast<const float*>(fighter + BlockstunOffset),
 				*reinterpret_cast<const float*>(fighter + AirHitstunOffset));
 		}
-		if (stun != DummyStun::None)
+		if (recovery != DummyRecovery::None)
 		{
-			TraceDummyEnd("new_stun", frame);
-			state.event = DummyStun::None;
+			TraceDummyEnd("new_recovery", frame);
+			state.event = DummyRecovery::None;
 			state.lastInput = nullptr;
 			return;
 		}
 
-		if (previousStun != DummyStun::None)
+		if (previous != DummyRecovery::None)
 		{
-			state.event = previousStun;
-			state.reaction = previousStun == DummyStun::Hit ? DummyOnHit : DummyOnBlock;
+			state.event = previous;
+			state.reaction = ReactionSettings(state.event);
 			state.recoveryFrame = frame;
 			state.playbackFrame = 0;
 			TrainingTeamEditor::TraceRecording("reaction scheduled event=%s slot=%d recovery_frame=%u delay=%d",
-				StunName(state.event), state.reaction.slot, frame, state.reaction.delay);
+				RecoveryName(state.event), state.reaction.slot, frame, state.reaction.delay);
 		}
 
-		if (state.event == DummyStun::None)
+		if (state.event == DummyRecovery::None)
 			return;
-		const auto& configured = state.event == DummyStun::Hit ? DummyOnHit : DummyOnBlock;
+		const auto& configured = ReactionSettings(state.event);
 		if (configured.slot != state.reaction.slot || configured.delay != state.reaction.delay
 			|| !HasDummyRecording(configured.slot))
 		{
 			TraceDummyEnd(configured.slot != state.reaction.slot || configured.delay != state.reaction.delay
 				? "configuration_changed" : configured.slot ? "recording_unavailable" : "disabled", frame);
-			state.event = DummyStun::None;
+			state.event = DummyRecovery::None;
 			state.lastInput = nullptr;
 			return;
 		}
@@ -4646,18 +4676,18 @@ namespace
 			return;
 		}
 		if (frame - state.recoveryFrame < static_cast<uint32_t>(configured.delay)
-			|| (!newFrame && previousStun == DummyStun::None))
+			|| (!newFrame && previous == DummyRecovery::None))
 			return;
 		if (state.playbackFrame >= recording.length)
 		{
 			TraceDummyEnd("completed", frame);
-			state.event = DummyStun::None;
+			state.event = DummyRecovery::None;
 			return;
 		}
 		if (state.playbackFrame == 0)
 			TrainingTeamEditor::TraceRecording(
 				"reaction playback started event=%s slot=%d frame=%u elapsed=%u length=%d",
-				StunName(state.event), configured.slot, frame, frame - state.recoveryFrame, recording.length);
+				RecoveryName(state.event), configured.slot, frame, frame - state.recoveryFrame, recording.length);
 		state.lastInput = recording.frames[state.playbackFrame++];
 		ApplyRecordingFrame(p2Input, state.lastInput, playbackP2Buttons);
 	}
