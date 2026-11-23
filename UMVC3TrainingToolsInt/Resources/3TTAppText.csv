@@ -204,6 +204,10 @@ REC_REACTION_OFF,Off,Desactivado
 REC_REACTION_DELAY,Delay,Retardo
 REC_REACTION_EMPTY,There is no P2 recording in this slot.,Esta ranura no tiene una grabación de J2.
 REC_REACTION_HELP,Record or load a P2 action below. At 0 f it plays as soon as the stun ends.,Graba o carga una acción de J2 abajo. Con 0 f se reproduce al terminar el aturdimiento.
+REC_DUMMY_CONTROLLER,Record dummy with my controller,Grabar dummy con mi mando
+REC_DUMMY_CONTROLLER_HELP,Uses P1's controller to record P2 in the selected slot. Reopen this tab to stop.,Usa el mando de J1 para grabar a J2 en la ranura elegida. Vuelve a esta pestaña para detener la toma.
+REC_DUMMY_CONTROLLER_ACTIVE,Dummy recording is active. Stop to return the controller to P1.,Grabación del dummy activa. Detén la toma para devolver el mando a J1.
+REC_DUMMY_CONTROLLER_UNAVAILABLE,Start a Training fight with a controller assigned to P1.,Inicia un combate de Entrenamiento con un mando asignado a J1.
 REC_BOTH,Record both,Grabar ambos
 REC_P1,Record P1,Grabar J1
 REC_P2,Record P2,Grabar J2

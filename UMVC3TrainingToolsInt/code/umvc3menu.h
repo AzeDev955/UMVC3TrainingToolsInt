@@ -206,6 +206,16 @@ inline DummyReaction DummyOnHit;
 inline DummyReaction DummyOnBlock;
 inline std::mutex RecordingMutex;
 bool HasDummyRecording(int slot);
+bool StartDummyControllerRecording();
+bool IsDummyControllerRecording();
+void StopDummyControllerRecording();
+void SetDummyCaptureGameFocus(bool focused);
+void FinishManualRecording(int p1Index, int& p1Length, int p2Index, int& p2Length);
+bool HasDummyControllerInputHook();
+inline constexpr uintptr_t DummyFightInputCall = 0x14002e149;
+bool IsDummyControllerInputCallSupported();
+void SetDummyControllerInputHookInstalled();
+uint32_t ConvertDummyFightInput(int player, uint32_t buttons, int alternateControls);
 #define ReplayLength (60*120)
 #define ReplayBufferSize 550
 inline uint8_t replayBuffer[ReplayLength][ReplayBufferSize];

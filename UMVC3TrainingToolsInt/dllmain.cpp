@@ -3229,6 +3229,34 @@ static void TheRecordPlaybackTab()
 		DrawDummyReaction("REC_REACTION_BLOCK", DummyOnBlock);
 		ImGui::TextWrapped("%s", UiText("REC_REACTION_HELP"));
 		ImGui::Separator();
+		if (IsDummyControllerRecording())
+		{
+			ImGui::TextUnformatted(UiText("REC_DUMMY_CONTROLLER_ACTIVE"));
+			if (recordingButton("REC_STOP"))
+				StopDummyControllerRecording();
+			ImGui::EndTabItem();
+			return;
+		}
+		ImGui::BeginDisabled(!HasDummyControllerInputHook() || recording || recordingP1 || recordingP2
+			|| replaying || replayingP1 || replayingP2);
+		const bool startDummyCapture = recordingButton("REC_DUMMY_CONTROLLER");
+		ImGui::EndDisabled();
+		ImGui::TextWrapped("%s", UiText("REC_DUMMY_CONTROLLER_HELP"));
+		if (startDummyCapture)
+		{
+			if (StartDummyControllerRecording())
+			{
+				ShowToolWindow = false;
+				ImGui::EndTabItem();
+				return;
+			}
+			outsideRecordingLock([&]
+			{
+				return MessageBoxW(hWnd, Localizer::UiWideText("REC_DUMMY_CONTROLLER_UNAVAILABLE").c_str(),
+					L"UMVC3 Training Tools", MB_ICONINFORMATION);
+			});
+		}
+		ImGui::Separator();
 		ImGui::TextUnformatted(UiText("P5_INCOMINGW"));
 
 		switch (RecordingSlot)
@@ -3288,11 +3316,7 @@ static void TheRecordPlaybackTab()
 				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
-						//recording = false;
-						recordingP1 = false;
-						recordingP2 = false;
-						recordedLength2P1 = recordReplayIndex2P1 - 1;
-						recordedLength2P2 = recordReplayIndex2P2 - 1;
+						FinishManualRecording(recordReplayIndex2P1, recordedLength2P1, recordReplayIndex2P2, recordedLength2P2);
 					}
 				}
 			}
@@ -3642,11 +3666,7 @@ static void TheRecordPlaybackTab()
 				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
-						//recording = false;
-						recordingP1 = false;
-						recordingP2 = false;
-						recordedLength3P1 = recordReplayIndex3P1 - 1;
-						recordedLength3P2 = recordReplayIndex3P2 - 1;
+						FinishManualRecording(recordReplayIndex3P1, recordedLength3P1, recordReplayIndex3P2, recordedLength3P2);
 					}
 				}
 			}
@@ -3996,11 +4016,7 @@ static void TheRecordPlaybackTab()
 				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
-						//recording = false;
-						recordingP1 = false;
-						recordingP2 = false;
-						recordedLength4P1 = recordReplayIndex4P1 - 1;
-						recordedLength4P2 = recordReplayIndex4P2 - 1;
+						FinishManualRecording(recordReplayIndex4P1, recordedLength4P1, recordReplayIndex4P2, recordedLength4P2);
 					}
 				}
 			}
@@ -4350,11 +4366,7 @@ static void TheRecordPlaybackTab()
 				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
-						//recording = false;
-						recordingP1 = false;
-						recordingP2 = false;
-						recordedLength5P1 = recordReplayIndex5P1 - 1;
-						recordedLength5P2 = recordReplayIndex5P2 - 1;
+						FinishManualRecording(recordReplayIndex5P1, recordedLength5P1, recordReplayIndex5P2, recordedLength5P2);
 					}
 				}
 			}
@@ -4705,11 +4717,7 @@ static void TheRecordPlaybackTab()
 				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
-						//recording = false;
-						recordingP1 = false;
-						recordingP2 = false;
-						recordedLengthP1 = recordReplayIndexP1 - 1;
-						recordedLengthP2 = recordReplayIndexP2 - 1;
+						FinishManualRecording(recordReplayIndexP1, recordedLengthP1, recordReplayIndexP2, recordedLengthP2);
 					}
 				}
 			}
@@ -5114,6 +5122,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		DWORD foregroundPid = 0;
 		const bool gameFocused = foreground && foreground != hWnd
 			&& GetWindowThreadProcessId(foreground, &foregroundPid) && foregroundPid == GetCurrentProcessId();
+		SetDummyCaptureGameFocus(gameFocused);
 		if (gameFocused)
 			returnToGame = foreground;
 
@@ -5187,6 +5196,16 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
 			recordingHookInstalled = true;
 			TrainingTeamEditor::TraceRecording("game input hook installed");
+			if (IsDummyControllerInputCallSupported())
+			{
+				InjectHook(_addr(DummyFightInputCall), tramp->Jump(ConvertDummyFightInput), HookType::Call);
+				SetDummyControllerInputHookInstalled();
+				TrainingTeamEditor::TraceRecording("dummy controller combat input hook installed");
+			}
+			else
+			{
+				TrainingTeamEditor::TraceRecording("dummy controller combat input hook unsupported");
+			}
 		}
 		TrainingTeamEditor::FlushRecordingLog();
 

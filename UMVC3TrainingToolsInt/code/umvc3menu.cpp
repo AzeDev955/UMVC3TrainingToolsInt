@@ -18,6 +18,8 @@
 #include "umvc3utils.h"
 #include "TrainingTeamEditor.h"
 #include "TrainingPad.h"
+#include <atomic>
+#include <optional>
 
 
 //Gotta port these to safer internal commands.
@@ -4251,9 +4253,9 @@ namespace
 {
 	struct DummyRecording
 	{
-		const uint8_t (*frames)[ReplayBufferSize];
-		const bool& available;
-		const int& length;
+		uint8_t (*frames)[ReplayBufferSize];
+		bool& available;
+		int& length;
 	};
 
 	const DummyRecording DummyRecordings[] = {
@@ -4267,7 +4269,7 @@ namespace
 	struct ReplayPositions
 	{
 		const int& p1;
-		const int& p2;
+		int& p2;
 		const int& p1Length;
 	};
 
@@ -4280,6 +4282,121 @@ namespace
 	};
 
 	constexpr size_t PlayerInputStride = 0x2c0;
+	constexpr uintptr_t FightInputConversionFunction = 0x14002da30;
+	constexpr uintptr_t ControllerManagerAddress = 0x140d510a0;
+	constexpr uintptr_t GetControllerForPlayer = 0x14025ac40;
+	constexpr uintptr_t ReadControllerButtons = 0x1402b3700;
+	// Tagged frames share the existing .dat frame size and travel through the same slots.
+	constexpr uint8_t DummyControllerFrameTag[] = { 'U', 'M', 'V', 'C', '3', 'P', '2', 1 };
+	bool dummyControllerInputHookInstalled = false;
+	std::atomic<bool> dummyCaptureGameFocused{ false };
+
+	struct DummyControllerCapture
+	{
+		uintptr_t action = 0;
+		int slot = 0;
+		int length = 0;
+		std::optional<uint32_t> lastFrame;
+		std::array<uint32_t, ReplayLength> buttons{};
+		bool seenNeutral = false;
+		bool loggedDelivery = false;
+	};
+
+	DummyControllerCapture dummyControllerCapture;
+	std::optional<uint32_t> liveDummyButtons;
+	std::optional<uint32_t> playbackP1Buttons;
+	std::optional<uint32_t> playbackP2Buttons;
+
+	int GetP1Controller()
+	{
+		const auto manager = *reinterpret_cast<const uintptr_t*>(_addr(ControllerManagerAddress));
+		return manager ? reinterpret_cast<int (*)(uintptr_t, int)>(_addr(GetControllerForPlayer))(manager, 0) : -1;
+	}
+
+	void StoreDummyControllerFrame(uint8_t* frame, uint32_t buttons)
+	{
+		memset(frame, 0, ReplayBufferSize);
+		memcpy(frame, DummyControllerFrameTag, sizeof(DummyControllerFrameTag));
+		memcpy(frame + sizeof(DummyControllerFrameTag), &buttons, sizeof(buttons));
+	}
+
+	void ApplyRecordingFrame(uint8_t* input, const uint8_t* frame, std::optional<uint32_t>& playbackButtons)
+	{
+		if (memcmp(frame, DummyControllerFrameTag, sizeof(DummyControllerFrameTag)) == 0)
+		{
+			uint32_t buttons;
+			memcpy(&buttons, frame + sizeof(DummyControllerFrameTag), sizeof(buttons));
+			playbackButtons = buttons;
+			return;
+		}
+		playbackButtons.reset();
+		memcpy(input, frame, ReplayBufferSize);
+	}
+
+	void FinishDummyControllerCapture(bool keep, const char* reason)
+	{
+		auto& capture = dummyControllerCapture;
+		if (!capture.action)
+			return;
+		if (keep && capture.length)
+		{
+			const auto& recording = DummyRecordings[capture.slot - 1];
+			for (int frame = 0; frame < capture.length; ++frame)
+				StoreDummyControllerFrame(recording.frames[frame], capture.buttons[frame]);
+			recording.length = capture.length;
+			recording.available = true;
+			RecordingPositions[capture.slot - 1].p2 = capture.length;
+		}
+		TrainingTeamEditor::TraceRecording(
+			"dummy controller capture ended slot=%d frames=%d saved=%d delivered_to_p2=%d reason=%s",
+			capture.slot, capture.length, keep && capture.length, capture.loggedDelivery, reason);
+		capture.action = 0;
+		recordingP2 = false;
+		liveDummyButtons.reset();
+	}
+
+	void UpdateDummyControllerCapture(const uint8_t* input)
+	{
+		auto& capture = dummyControllerCapture;
+		const auto action = TrainingTeamEditor::GetFightingAction();
+		const auto controller = GetP1Controller();
+		if (action != capture.action || controller < 0 || controller >= XUSER_MAX_COUNT)
+		{
+			FinishDummyControllerCapture(false, action != capture.action ? "combat_context_changed" : "p1_controller_unavailable");
+			return;
+		}
+
+		const auto frame = *reinterpret_cast<const uint32_t*>(action + 0xf0);
+		if (capture.lastFrame && frame < *capture.lastFrame)
+		{
+			FinishDummyControllerCapture(false, "battle_frame_reset");
+			return;
+		}
+		if (!dummyCaptureGameFocused.load(std::memory_order_relaxed))
+			return;
+
+		if (capture.lastFrame == frame)
+		{
+			liveDummyButtons = capture.buttons[capture.length - 1];
+			return;
+		}
+		const auto buttons = reinterpret_cast<uint32_t (*)(const uint8_t*, int)>(_addr(ReadControllerButtons))(input, controller);
+		if (!capture.seenNeutral)
+		{
+			capture.seenNeutral = buttons == 0;
+			liveDummyButtons = 0;
+			return;
+		}
+		liveDummyButtons = buttons;
+		if (!capture.length && !buttons)
+			return;
+		capture.lastFrame = frame;
+		capture.buttons[capture.length++] = buttons;
+		if (capture.length == 1)
+			TrainingTeamEditor::TraceRecording("dummy controller first input slot=%d frame=%u port=%d",
+				capture.slot, frame, controller);
+		// Let the last recorded frame reach the fighter before returning control.
+	}
 
 	struct RecordingTrace
 	{
@@ -4502,7 +4619,7 @@ namespace
 		const auto& recording = DummyRecordings[configured.slot - 1];
 		if (state.lastInput)
 		{
-			memcpy(p2Input, state.lastInput, ReplayBufferSize);
+			ApplyRecordingFrame(p2Input, state.lastInput, playbackP2Buttons);
 			return;
 		}
 		if (frame - state.recoveryFrame < static_cast<uint32_t>(configured.delay)
@@ -4519,7 +4636,7 @@ namespace
 				"reaction playback started event=%s slot=%d frame=%u elapsed=%u length=%d",
 				StunName(state.event), configured.slot, frame, frame - state.recoveryFrame, recording.length);
 		state.lastInput = recording.frames[state.playbackFrame++];
-		memcpy(p2Input, state.lastInput, ReplayBufferSize);
+		ApplyRecordingFrame(p2Input, state.lastInput, playbackP2Buttons);
 	}
 }
 
@@ -4531,10 +4648,110 @@ bool HasDummyRecording(int slot)
 	return recording.available && recording.length > 0 && recording.length <= ReplayLength;
 }
 
+bool HasDummyControllerInputHook()
+{
+	return dummyControllerInputHookInstalled;
+}
+
+bool IsDummyControllerInputCallSupported()
+{
+	const auto call = _addr(DummyFightInputCall);
+	int32_t displacement;
+	memcpy(&displacement, reinterpret_cast<const void*>(call + 1), sizeof(displacement));
+	return *reinterpret_cast<const uint8_t*>(call) == 0xe8
+		&& call + 5 + displacement == _addr(FightInputConversionFunction);
+}
+
+void SetDummyControllerInputHookInstalled()
+{
+	dummyControllerInputHookInstalled = true;
+}
+
+bool StartDummyControllerRecording()
+{
+	if (!dummyControllerInputHookInstalled || recording || recordingP1 || recordingP2
+		|| replaying || replayingP1 || replayingP2 || RecordingSlot < 1 || RecordingSlot > 5)
+		return false;
+	const auto action = TrainingTeamEditor::GetFightingAction();
+	const int controller = GetP1Controller();
+	if (!action || controller < 0 || controller >= XUSER_MAX_COUNT)
+	{
+		TrainingTeamEditor::TraceRecording("dummy controller capture unavailable fighting=%d p1_port=%d",
+			action != 0, controller);
+		return false;
+	}
+	dummyControllerCapture.action = action;
+	dummyControllerCapture.slot = RecordingSlot;
+	dummyControllerCapture.length = 0;
+	dummyControllerCapture.lastFrame.reset();
+	dummyControllerCapture.seenNeutral = false;
+	dummyControllerCapture.loggedDelivery = false;
+	dummyCaptureGameFocused.store(false, std::memory_order_relaxed);
+	recordingP2 = true;
+	TrainingTeamEditor::TraceRecording("dummy controller capture armed slot=%d p1_port=%d", RecordingSlot, controller);
+	return true;
+}
+
+bool IsDummyControllerRecording()
+{
+	return dummyControllerCapture.action != 0;
+}
+
+void StopDummyControllerRecording()
+{
+	FinishDummyControllerCapture(true, "stopped");
+}
+
+void SetDummyCaptureGameFocus(bool focused)
+{
+	dummyCaptureGameFocused.store(focused, std::memory_order_relaxed);
+}
+
+void FinishManualRecording(int p1Index, int& p1Length, int p2Index, int& p2Length)
+{
+	if (recordingP1)
+		p1Length = p1Index;
+	if (recordingP2)
+		p2Length = p2Index;
+	recordingP1 = false;
+	recordingP2 = false;
+}
+
+uint32_t ConvertDummyFightInput(int player, uint32_t buttons, int alternateControls)
+{
+	{
+		const std::lock_guard lock(RecordingMutex);
+		if (liveDummyButtons && player == 0)
+			return 0;
+		if (liveDummyButtons && player == 1)
+		{
+			buttons = *liveDummyButtons;
+			if (buttons && !dummyControllerCapture.loggedDelivery)
+			{
+				dummyControllerCapture.loggedDelivery = true;
+				TrainingTeamEditor::TraceRecording("dummy controller input delivered to p2 slot=%d", dummyControllerCapture.slot);
+			}
+		}
+		else if (player == 1 && playbackP2Buttons)
+		{
+			buttons = *playbackP2Buttons;
+		}
+		else if (player == 0 && playbackP1Buttons)
+		{
+			buttons = *playbackP1Buttons;
+		}
+	}
+	return reinterpret_cast<uint32_t (*)(int, uint32_t, int)>(_addr(FightInputConversionFunction))(
+		player, buttons, alternateControls);
+}
+
 void FUN_1402b41b0(longlong param_1)
 {
 	((void (*)(longlong))_addr(0x1402b41b0))(param_1);
 	const std::lock_guard lock(RecordingMutex);
+	liveDummyButtons.reset();
+	playbackP1Buttons.reset();
+	playbackP2Buttons.reset();
 	const int traceSlot = RecordingSlot >= 1 && RecordingSlot <= 5 ? RecordingSlot : 1;
 	const auto input = reinterpret_cast<uint8_t*>(param_1);
 	const auto recordingPlayers = recording ? 3u : PlayerMask(recordingP1, recordingP2);
@@ -4556,7 +4773,17 @@ void FUN_1402b41b0(longlong param_1)
 		TrainingTeamEditor::TraceRecording("game input hook context=%p cached_context=%p",
 			input, reinterpret_cast<const void*>(inputRef));
 	}
+	inputRef = static_cast<uintptr_t>(param_1);
 	TraceRecordingInput(traceSlot, recordingPlayers, input);
+	if (IsDummyControllerRecording())
+	{
+		if (dummyControllerCapture.length == ReplayLength)
+			FinishDummyControllerCapture(true, "frame_limit");
+		else
+			UpdateDummyControllerCapture(input);
+		ApplyDummyReaction(input + PlayerInputStride, true);
+		return;
+	}
 	const bool manualP2PlaybackOrRecording = recording || recordingP2 || replaying || replayingP2;
 	switch (RecordingSlot)
 	{
@@ -4600,8 +4827,8 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replaying) {
-				memcpy((uint8_t*)inputRef, &replayBuffer3[recordReplayIndex2], ReplayBufferSize);
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer4[recordReplayIndex2], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer3[recordReplayIndex2], playbackP1Buttons);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer4[recordReplayIndex2], playbackP2Buttons);
 				recordReplayIndex2P1++;
 				recordReplayIndex2P2++;
 				if (recordReplayIndex2 >= recordedLength2) {
@@ -4615,14 +4842,14 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replayingP1) {
-				memcpy((uint8_t*)inputRef, &replayBuffer3[recordReplayIndex2P1], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer3[recordReplayIndex2P1], playbackP1Buttons);
 				recordReplayIndex2P1++;
 				if (recordReplayIndex2P1 >= recordedLength2P1) {
 					replayingP1 = false;
 				}
 			}
 			if (replayingP2) {
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer4[recordReplayIndex2P2], ReplayBufferSize);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer4[recordReplayIndex2P2], playbackP2Buttons);
 				recordReplayIndex2P2++;
 				if (recordReplayIndex2P2 >= recordedLength2P2) {
 					replayingP2 = false;
@@ -4672,8 +4899,8 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replaying) {
-				memcpy((uint8_t*)inputRef, &replayBuffer5[recordReplayIndex3], ReplayBufferSize);
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer6[recordReplayIndex3], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer5[recordReplayIndex3], playbackP1Buttons);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer6[recordReplayIndex3], playbackP2Buttons);
 				recordReplayIndex3P1++;
 				recordReplayIndex3P2++;
 				if (recordReplayIndex3 >= recordedLength3) {
@@ -4687,14 +4914,14 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replayingP1) {
-				memcpy((uint8_t*)inputRef, &replayBuffer5[recordReplayIndex3P1], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer5[recordReplayIndex3P1], playbackP1Buttons);
 				recordReplayIndex3P1++;
 				if (recordReplayIndex3P1 >= recordedLength3P1) {
 					replayingP1 = false;
 				}
 			}
 			if (replayingP2) {
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer6[recordReplayIndex3P2], ReplayBufferSize);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer6[recordReplayIndex3P2], playbackP2Buttons);
 				recordReplayIndex3P2++;
 				if (recordReplayIndex3P2 >= recordedLength3P2) {
 					replayingP2 = false;
@@ -4744,8 +4971,8 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replaying) {
-				memcpy((uint8_t*)inputRef, &replayBuffer7[recordReplayIndex4], ReplayBufferSize);
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer8[recordReplayIndex4], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer7[recordReplayIndex4], playbackP1Buttons);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer8[recordReplayIndex4], playbackP2Buttons);
 				recordReplayIndex4P1++;
 				recordReplayIndex4P2++;
 				if (recordReplayIndex4 >= recordedLength4) {
@@ -4759,14 +4986,14 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replayingP1) {
-				memcpy((uint8_t*)inputRef, &replayBuffer7[recordReplayIndex4P1], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer7[recordReplayIndex4P1], playbackP1Buttons);
 				recordReplayIndex4P1++;
 				if (recordReplayIndex4P1 >= recordedLength4P1) {
 					replayingP1 = false;
 				}
 			}
 			if (replayingP2) {
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer8[recordReplayIndex4P2], ReplayBufferSize);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer8[recordReplayIndex4P2], playbackP2Buttons);
 				recordReplayIndex4P2++;
 				if (recordReplayIndex4P2 >= recordedLength4P2) {
 					replayingP2 = false;
@@ -4816,8 +5043,8 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replaying) {
-				memcpy((uint8_t*)inputRef, &replayBuffer9[recordReplayIndex5], ReplayBufferSize);
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer10[recordReplayIndex5], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer9[recordReplayIndex5], playbackP1Buttons);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer10[recordReplayIndex5], playbackP2Buttons);
 				//recordReplayIndex5++;
 				recordReplayIndex5P1++;
 				recordReplayIndex5P2++;
@@ -4832,7 +5059,7 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replayingP1) {
-				memcpy((uint8_t*)inputRef, &replayBuffer9[recordReplayIndex5P1], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer9[recordReplayIndex5P1], playbackP1Buttons);
 				//recordReplayIndex5++;
 				recordReplayIndex5P1++;
 				if (recordReplayIndex5P1 >= recordedLength5P1) {
@@ -4840,7 +5067,7 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replayingP2) {
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer10[recordReplayIndex5P2], ReplayBufferSize);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer10[recordReplayIndex5P2], playbackP2Buttons);
 				//recordReplayIndex5++;
 				recordReplayIndex5P2++;
 				if (recordReplayIndex5P2 >= recordedLength5P2) {
@@ -4892,8 +5119,8 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replaying) {
-				memcpy((uint8_t*)inputRef, &replayBuffer[recordReplayIndex], ReplayBufferSize);
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer2[recordReplayIndex], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer[recordReplayIndex], playbackP1Buttons);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer2[recordReplayIndex], playbackP2Buttons);
 				//recordReplayIndex++;
 				recordReplayIndexP1++;
 				recordReplayIndexP2++;
@@ -4908,7 +5135,7 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replayingP1) {
-				memcpy((uint8_t*)inputRef, &replayBuffer[recordReplayIndexP1], ReplayBufferSize);
+				ApplyRecordingFrame(input, replayBuffer[recordReplayIndexP1], playbackP1Buttons);
 				//recordReplayIndex++;
 				recordReplayIndexP1++;
 				if (recordReplayIndexP1 >= recordedLengthP1) {
@@ -4916,7 +5143,7 @@ void FUN_1402b41b0(longlong param_1)
 				}
 			}
 			if (replayingP2) {
-				memcpy((uint8_t*)inputRef + 0x2c0, &replayBuffer2[recordReplayIndexP2], ReplayBufferSize);
+				ApplyRecordingFrame(input + PlayerInputStride, replayBuffer2[recordReplayIndexP2], playbackP2Buttons);
 				//recordReplayIndex++;
 				recordReplayIndexP2++;
 				if (recordReplayIndexP2 >= recordedLengthP2) {
