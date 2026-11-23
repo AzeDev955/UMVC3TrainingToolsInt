@@ -3,6 +3,7 @@
 #include <TlHelp32.h>
 #include <vector>
 #include <list>
+#include <mutex>
 #include <string>
 #include <tchar.h>
 #include "umvc3_sMvc3Main.h"
@@ -195,6 +196,16 @@ inline int recordedLength5 = 0;
 inline int recordedLength5P1 = 0;
 inline int recordedLength5P2 = 0;
 inline int RecordingSlot = 1;
+struct DummyReaction
+{
+	int slot = 0;
+	int delay = 0;
+};
+inline constexpr int MaxDummyReactionDelay = 120;
+inline DummyReaction DummyOnHit;
+inline DummyReaction DummyOnBlock;
+inline std::mutex RecordingMutex;
+bool HasDummyRecording(int slot);
 #define ReplayLength (60*120)
 #define ReplayBufferSize 550
 inline uint8_t replayBuffer[ReplayLength][ReplayBufferSize];

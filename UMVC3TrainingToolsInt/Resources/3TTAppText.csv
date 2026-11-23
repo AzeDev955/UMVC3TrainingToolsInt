@@ -197,6 +197,13 @@ UI_UNDERSTANDING,LOU,Comprensión
 P4_REMAININGHITSTUN,Remaining hitstun,Aturdimiento restante por impacto
 P4_REMAININGBLOCKSTUN,Remaining blockstun,Aturdimiento restante por bloqueo
 P6_RECORDPLAYBACK,Recording,Grabación
+REC_REACTIONS,Dummy reactions,Reacciones del dummy
+REC_REACTION_HIT,On Hit,Tras recibir un golpe
+REC_REACTION_BLOCK,On Block,Tras bloquear
+REC_REACTION_OFF,Off,Desactivado
+REC_REACTION_DELAY,Delay,Retardo
+REC_REACTION_EMPTY,There is no P2 recording in this slot.,Esta ranura no tiene una grabación de J2.
+REC_REACTION_HELP,Record or load a P2 action below. At 0 f it plays as soon as the stun ends.,Graba o carga una acción de J2 abajo. Con 0 f se reproduce al terminar el aturdimiento.
 REC_BOTH,Record both,Grabar ambos
 REC_P1,Record P1,Grabar J1
 REC_P2,Record P2,Grabar J2

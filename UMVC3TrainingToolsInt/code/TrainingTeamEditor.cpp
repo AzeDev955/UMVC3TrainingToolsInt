@@ -1112,10 +1112,17 @@ bool TrainingTeamEditor::PrepareQuickMatch(const TrainingShortcut::TeamPicks& pi
 
 bool TrainingTeamEditor::IsTrainingPlayable()
 {
+	LoadedTeams loaded{};
+	return GetFightingAction() && ReadLoadedTeams(loaded);
+}
+
+uintptr_t TrainingTeamEditor::GetFightingAction()
+{
 	Match match{};
 	ActionState action{};
-	LoadedTeams loaded{};
-	return ReadMatch(match) && ReadAction(match.action, action) && IsFighting(action) && ReadLoadedTeams(loaded);
+	if (!ReadMatch(match) || !ReadAction(match.action, action) || !IsFighting(action))
+		return 0;
+	return match.action;
 }
 
 void TrainingTeamEditor::InitializeLog(HMODULE module)

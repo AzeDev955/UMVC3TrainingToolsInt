@@ -3160,10 +3160,53 @@ static void TheExtraDataTab()
 }
 
 //For Recording And Playback Stuff.
+static void DrawDummyReaction(const char* label, DummyReaction& reaction)
+{
+	ImGui::PushID(label);
+	ImGui::TextUnformatted(UiText(label));
+	const auto slotLabel = reaction.slot ? std::to_string(reaction.slot) : UiText("REC_REACTION_OFF");
+	ImGui::SetNextItemWidth(80.0f);
+	if (ImGui::BeginCombo(UiLabel("REC_SLOT").c_str(), slotLabel.c_str()))
+	{
+		if (ImGui::Selectable(UiText("REC_REACTION_OFF"), reaction.slot == 0))
+			reaction.slot = 0;
+		for (int slot = 1; slot <= 5; ++slot)
+		{
+			const auto name = std::to_string(slot);
+			if (ImGui::Selectable(name.c_str(), reaction.slot == slot))
+				reaction.slot = slot;
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(100.0f);
+	ImGui::BeginDisabled(reaction.slot == 0);
+	ImGui::SliderInt(UiLabel("REC_REACTION_DELAY").c_str(), &reaction.delay, 0, MaxDummyReactionDelay,
+		"%d f", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::EndDisabled();
+	if (reaction.slot && !HasDummyRecording(reaction.slot))
+		ImGui::TextDisabled("%s", UiText("REC_REACTION_EMPTY"));
+	ImGui::PopID();
+}
+
 static void TheRecordPlaybackTab()
 {
 	if (ImGui::BeginTabItem(UiLabel("P6_RECORDPLAYBACK").c_str()))
 	{
+		std::unique_lock recordingLock(RecordingMutex);
+		const auto outsideRecordingLock = [&recordingLock](auto operation)
+		{
+			recordingLock.unlock();
+			const auto result = operation();
+			recordingLock.lock();
+			return result;
+		};
+
+		ImGui::SeparatorText(UiText("REC_REACTIONS"));
+		DrawDummyReaction("REC_REACTION_HIT", DummyOnHit);
+		DrawDummyReaction("REC_REACTION_BLOCK", DummyOnBlock);
+		ImGui::TextWrapped("%s", UiText("REC_REACTION_HELP"));
+		ImGui::Separator();
 		ImGui::TextUnformatted(UiText("P5_INCOMINGW"));
 
 		switch (RecordingSlot)
@@ -3329,7 +3372,7 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer3, 550, recordedLength2P1, pRec);
@@ -3356,7 +3399,7 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer4, 550, recordedLength2P2, pRec);
@@ -3382,11 +3425,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -3399,7 +3442,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -3452,11 +3495,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -3469,7 +3512,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -3669,7 +3712,7 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer5, 550, recordedLength3P1, pRec);
@@ -3696,7 +3739,7 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer6, 550, recordedLength3P2, pRec);
@@ -3722,11 +3765,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -3739,7 +3782,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -3792,11 +3835,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -3809,7 +3852,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -4009,7 +4052,7 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer7, 550, recordedLength4P1, pRec);
@@ -4036,7 +4079,7 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer8, 550, recordedLength4P2, pRec);
@@ -4062,11 +4105,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -4079,7 +4122,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -4132,11 +4175,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -4149,7 +4192,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -4349,7 +4392,7 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer9, 550, recordedLength5P1, pRec);
@@ -4376,7 +4419,7 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer10, 550, recordedLength5P2, pRec);
@@ -4402,11 +4445,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -4419,7 +4462,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -4472,11 +4515,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -4489,7 +4532,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -4690,7 +4733,7 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer, 550, recordedLengthP1, pRec);
@@ -4717,7 +4760,7 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetSaveFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
 							fwrite(replayBuffer2, 550, recordedLengthP2, pRec);
@@ -4744,11 +4787,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -4761,7 +4804,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{
@@ -4815,11 +4858,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (GetOpenFileName(&ofn))
+						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
-								MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
 							else
@@ -4832,7 +4875,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
-									MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION);
+									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
 								{

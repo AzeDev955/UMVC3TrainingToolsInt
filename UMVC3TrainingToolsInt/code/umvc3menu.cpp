@@ -16,6 +16,7 @@
 #include <iomanip>
 #include <ctime>
 #include "umvc3utils.h"
+#include "TrainingTeamEditor.h"
 
 
 //Gotta port these to safer internal commands.
@@ -4245,8 +4246,169 @@ void SaveReplayP1()
 }
 
 //Based on the hook by SanHKHaan. Modified for use with multiple slots.
+namespace
+{
+	struct DummyRecording
+	{
+		const uint8_t (*frames)[ReplayBufferSize];
+		const bool& available;
+		const int& length;
+	};
+
+	const DummyRecording DummyRecordings[] = {
+		{ replayBuffer2, replayAvailableP2, recordedLengthP2 },
+		{ replayBuffer4, replayAvailable2P2, recordedLength2P2 },
+		{ replayBuffer6, replayAvailable3P2, recordedLength3P2 },
+		{ replayBuffer8, replayAvailable4P2, recordedLength4P2 },
+		{ replayBuffer10, replayAvailable5P2, recordedLength5P2 },
+	};
+
+	enum class DummyStun { None, Hit, Block };
+
+	struct DummyReactionState
+	{
+		uintptr_t action = 0;
+		uintptr_t fighter = 0;
+		uint32_t frame = 0;
+		DummyStun stun = DummyStun::None;
+		DummyStun event = DummyStun::None;
+		DummyReaction reaction;
+		uint32_t recoveryFrame = 0;
+		int playbackFrame = 0;
+		const uint8_t* lastInput = nullptr;
+	};
+
+	DummyReactionState dummyReaction;
+
+	uintptr_t GetActiveDummy()
+	{
+		const auto characters = *reinterpret_cast<const uintptr_t*>(_addr(0x140d44a70));
+		const auto chain = characters ? *reinterpret_cast<const uintptr_t*>(characters + 0x328) : 0;
+		const auto next = chain ? *reinterpret_cast<const uintptr_t*>(chain + 0x10) : 0;
+		if (!next)
+			return 0;
+
+		const auto second = *reinterpret_cast<const uintptr_t*>(next + 0x8);
+		const uintptr_t fighters[] = {
+			*reinterpret_cast<const uintptr_t*>(chain + 0x8),
+			second,
+			second ? *reinterpret_cast<const uintptr_t*>(second + 0x18) : 0,
+		};
+		for (const auto fighter : fighters)
+		{
+			if (!fighter)
+				continue;
+			const auto tag = reinterpret_cast<const Fighter*>(fighter)->tagState;
+			if (tag == Active || tag == Active2)
+				return fighter;
+		}
+		return 0;
+	}
+
+	DummyStun ReadDummyStun(uintptr_t fighter)
+	{
+		// Remaining ground hitstun, blockstun and air hitstun, respectively.
+		const auto timers = reinterpret_cast<const float*>(fighter + 0x4154);
+		if (timers[0] > 0.0f || timers[2] > 0.0f)
+			return DummyStun::Hit;
+		return timers[1] > 0.0f ? DummyStun::Block : DummyStun::None;
+	}
+
+	void ApplyDummyReaction(uint8_t* p2Input, bool manualP2PlaybackOrRecording)
+	{
+		auto& state = dummyReaction;
+		if (manualP2PlaybackOrRecording || (!DummyOnHit.slot && !DummyOnBlock.slot))
+		{
+			state = {};
+			return;
+		}
+
+		const auto action = TrainingTeamEditor::GetFightingAction();
+		const auto fighter = action ? GetActiveDummy() : 0;
+		if (!fighter || *reinterpret_cast<const float*>(fighter + 0x1550) <= 0.0f)
+		{
+			state = {};
+			return;
+		}
+
+		// The input hook can be used without advancing the battle frame.
+		const auto frame = *reinterpret_cast<const uint32_t*>(action + 0xf0);
+		const auto stun = ReadDummyStun(fighter);
+		if (action != state.action || fighter != state.fighter || frame < state.frame)
+		{
+			state = {};
+			state.action = action;
+			state.fighter = fighter;
+			state.frame = frame;
+			state.stun = stun;
+			return;
+		}
+
+		const bool newFrame = frame != state.frame;
+		state.frame = frame;
+		if (newFrame)
+			state.lastInput = nullptr;
+
+		const auto previousStun = state.stun;
+		state.stun = stun;
+		if (stun != DummyStun::None)
+		{
+			state.event = DummyStun::None;
+			state.lastInput = nullptr;
+			return;
+		}
+
+		if (previousStun != DummyStun::None)
+		{
+			state.event = previousStun;
+			state.reaction = previousStun == DummyStun::Hit ? DummyOnHit : DummyOnBlock;
+			state.recoveryFrame = frame;
+			state.playbackFrame = 0;
+		}
+
+		if (state.event == DummyStun::None)
+			return;
+		const auto& configured = state.event == DummyStun::Hit ? DummyOnHit : DummyOnBlock;
+		if (configured.slot != state.reaction.slot || configured.delay != state.reaction.delay
+			|| !HasDummyRecording(configured.slot))
+		{
+			state.event = DummyStun::None;
+			state.lastInput = nullptr;
+			return;
+		}
+
+		const auto& recording = DummyRecordings[configured.slot - 1];
+		if (state.lastInput)
+		{
+			memcpy(p2Input, state.lastInput, ReplayBufferSize);
+			return;
+		}
+		if (frame - state.recoveryFrame < static_cast<uint32_t>(configured.delay)
+			|| (!newFrame && previousStun == DummyStun::None))
+			return;
+		if (state.playbackFrame >= recording.length)
+		{
+			state.event = DummyStun::None;
+			return;
+		}
+		state.lastInput = recording.frames[state.playbackFrame++];
+		memcpy(p2Input, state.lastInput, ReplayBufferSize);
+	}
+}
+
+bool HasDummyRecording(int slot)
+{
+	if (slot < 1 || slot > static_cast<int>(std::size(DummyRecordings)))
+		return false;
+	const auto& recording = DummyRecordings[slot - 1];
+	return recording.available && recording.length > 0 && recording.length <= ReplayLength;
+}
+
 void FUN_1402b41b0(longlong param_1)
 {
+	((void (*)(longlong))_addr(0x1402b41b0))(param_1);
+	const std::lock_guard lock(RecordingMutex);
+	const bool manualP2PlaybackOrRecording = recording || recordingP2 || replaying || replayingP2;
 	switch (RecordingSlot)
 	{
 
@@ -4257,7 +4419,6 @@ void FUN_1402b41b0(longlong param_1)
 			inputRef = (uintptr_t)param_1;
 		}
 
-		((void (*)(longlong))_addr(0x1402b41b0))(param_1);
 		if (inputRefSet) {
 			if (recording) {
 				memcpy(&replayBuffer3[recordReplayIndex2], (uint8_t*)inputRef, ReplayBufferSize);
@@ -4330,7 +4491,6 @@ void FUN_1402b41b0(longlong param_1)
 			inputRef = (uintptr_t)param_1;
 		}
 
-		((void (*)(longlong))_addr(0x1402b41b0))(param_1);
 		if (inputRefSet) {
 			if (recording) {
 				memcpy(&replayBuffer5[recordReplayIndex3], (uint8_t*)inputRef, ReplayBufferSize);
@@ -4403,7 +4563,6 @@ void FUN_1402b41b0(longlong param_1)
 			inputRef = (uintptr_t)param_1;
 		}
 
-		((void (*)(longlong))_addr(0x1402b41b0))(param_1);
 		if (inputRefSet) {
 			if (recording) {
 				memcpy(&replayBuffer7[recordReplayIndex4], (uint8_t*)inputRef, ReplayBufferSize);
@@ -4476,7 +4635,6 @@ void FUN_1402b41b0(longlong param_1)
 			inputRef = (uintptr_t)param_1;
 		}
 
-		((void (*)(longlong))_addr(0x1402b41b0))(param_1);
 		if (inputRefSet) {
 			if (recording) {
 				memcpy(&replayBuffer9[recordReplayIndex5], (uint8_t*)inputRef, ReplayBufferSize);
@@ -4553,7 +4711,6 @@ void FUN_1402b41b0(longlong param_1)
 			inputRef = (uintptr_t)param_1;
 		}
 
-		((void (*)(longlong))_addr(0x1402b41b0))(param_1);
 		if (inputRefSet) {
 			if (recording) {
 				memcpy(&replayBuffer[recordReplayIndex], (uint8_t*)inputRef, ReplayBufferSize);
@@ -4622,5 +4779,5 @@ void FUN_1402b41b0(longlong param_1)
 		break;
 	}
 
-
+	ApplyDummyReaction(reinterpret_cast<uint8_t*>(param_1) + 0x2c0, manualP2PlaybackOrRecording);
 }
