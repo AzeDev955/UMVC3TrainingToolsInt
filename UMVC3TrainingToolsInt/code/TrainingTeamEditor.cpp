@@ -263,6 +263,12 @@ namespace
 	unsigned attemptCount = 0;
 	std::atomic<unsigned> watchedAttempt{ 0 };
 	std::atomic<ULONGLONG> lastEditorUpdate{ 0 };
+	constexpr size_t RecordingLogCapacity = 128;
+	using RecordingLogLine = std::array<char, 320>;
+	std::array<RecordingLogLine, RecordingLogCapacity> recordingLog{};
+	size_t recordingLogSize = 0;
+	unsigned droppedRecordingLogs = 0;
+	SRWLOCK recordingLogLock = SRWLOCK_INIT;
 
 	bool Log(unsigned attempt, const char* format, ...)
 	{
@@ -1077,6 +1083,41 @@ void TrainingTeamEditor::TraceQuickShortcut(const char* event)
 void TrainingTeamEditor::TraceQuickSelection(int p1Phase, int p2Phase, int mode)
 {
 	Log(0, "quick training: selector phases P1=%d P2=%d mode=%d", p1Phase, p2Phase, mode);
+}
+
+void TrainingTeamEditor::TraceRecording(const char* format, ...)
+{
+	AcquireSRWLockExclusive(&recordingLogLock);
+	if (recordingLogSize < recordingLog.size())
+	{
+		auto& line = recordingLog[recordingLogSize++];
+		va_list args;
+		va_start(args, format);
+		vsnprintf_s(line.data(), line.size(), _TRUNCATE, format, args);
+		va_end(args);
+	}
+	else
+	{
+		++droppedRecordingLogs;
+	}
+	ReleaseSRWLockExclusive(&recordingLogLock);
+}
+
+void TrainingTeamEditor::FlushRecordingLog()
+{
+	static std::array<RecordingLogLine, RecordingLogCapacity> lines;
+	AcquireSRWLockExclusive(&recordingLogLock);
+	const auto count = recordingLogSize;
+	std::copy_n(recordingLog.begin(), count, lines.begin());
+	const auto dropped = droppedRecordingLogs;
+	recordingLogSize = 0;
+	droppedRecordingLogs = 0;
+	ReleaseSRWLockExclusive(&recordingLogLock);
+
+	for (size_t index = 0; index < count; ++index)
+		Log(0, "recording: %s", lines[index].data());
+	if (dropped)
+		Log(0, "recording: dropped %u diagnostic messages", dropped);
 }
 
 bool TrainingTeamEditor::PrepareQuickMatch(const TrainingShortcut::TeamPicks& picks)

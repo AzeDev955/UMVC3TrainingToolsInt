@@ -3162,6 +3162,7 @@ static void TheExtraDataTab()
 //For Recording And Playback Stuff.
 static void DrawDummyReaction(const char* label, DummyReaction& reaction)
 {
+	const auto previous = reaction;
 	ImGui::PushID(label);
 	ImGui::TextUnformatted(UiText(label));
 	const auto slotLabel = reaction.slot ? std::to_string(reaction.slot) : UiText("REC_REACTION_OFF");
@@ -3183,9 +3184,13 @@ static void DrawDummyReaction(const char* label, DummyReaction& reaction)
 	ImGui::BeginDisabled(reaction.slot == 0);
 	ImGui::SliderInt(UiLabel("REC_REACTION_DELAY").c_str(), &reaction.delay, 0, MaxDummyReactionDelay,
 		"%d f", ImGuiSliderFlags_AlwaysClamp);
+	const bool delayEdited = ImGui::IsItemDeactivatedAfterEdit();
 	ImGui::EndDisabled();
 	if (reaction.slot && !HasDummyRecording(reaction.slot))
 		ImGui::TextDisabled("%s", UiText("REC_REACTION_EMPTY"));
+	if (reaction.slot != previous.slot || delayEdited)
+		TrainingTeamEditor::TraceRecording("reaction configured event=%s slot=%d delay=%d available=%d",
+			label, reaction.slot, reaction.delay, HasDummyRecording(reaction.slot));
 	ImGui::PopID();
 }
 
@@ -3201,6 +3206,23 @@ static void TheRecordPlaybackTab()
 			recordingLock.lock();
 			return result;
 		};
+		const auto recordingButton = [](const char* action)
+		{
+			const bool pressed = ImGui::Button(UiText(action));
+			if (pressed)
+				TrainingTeamEditor::TraceRecording("menu request action=%s slot=%d", action, RecordingSlot);
+			return pressed;
+		};
+		const auto recordingFileDialog = [&outsideRecordingLock](OPENFILENAME& dialog, bool save)
+		{
+			const bool selected = outsideRecordingLock([&]
+			{
+				return save ? GetSaveFileName(&dialog) : GetOpenFileName(&dialog);
+			}) != FALSE;
+			TrainingTeamEditor::TraceRecording("file dialog action=%s slot=%d result=%s",
+				save ? "save" : "load", RecordingSlot, selected ? "selected" : "cancelled_or_failed");
+			return selected;
+		};
 
 		ImGui::SeparatorText(UiText("REC_REACTIONS"));
 		DrawDummyReaction("REC_REACTION_HIT", DummyOnHit);
@@ -3215,7 +3237,7 @@ static void TheRecordPlaybackTab()
 		case 2:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_BOTH"))) {
+				if (recordingButton("REC_BOTH")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -3232,7 +3254,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P1"))) {
+				if (recordingButton("REC_P1")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -3248,7 +3270,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P2"))) {
+				if (recordingButton("REC_P2")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -3263,7 +3285,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex2P1 > 90 || recordReplayIndex2P2 > 90) {
-				if (ImGui::Button(UiText("REC_STOP"))) {
+				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -3280,7 +3302,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable2P1 && replayAvailable2P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
+					if (recordingButton("REC_PLAY_BOTH")) {
 						if (CheckTheMode() == true)
 						{
 
@@ -3295,7 +3317,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex2P1 > 90 || recordReplayIndex2P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP")))
+					if (recordingButton("REC_PLAY_STOP"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3309,7 +3331,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable2P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
+					if (recordingButton("REC_PLAY_P1")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -3319,7 +3341,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex2P1 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
+					if (recordingButton("REC_PLAY_STOP_P1"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3332,7 +3354,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable2P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
+					if (recordingButton("REC_PLAY_P2")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -3342,7 +3364,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex2P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
+					if (recordingButton("REC_PLAY_STOP_P2"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3356,7 +3378,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button(UiText("REC_SAVE_P1")))
+			if (recordingButton("REC_SAVE_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3372,17 +3394,20 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer3, 550, recordedLength2P1, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer3, 550, recordedLength2P1, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P1 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength2P1, written, pRec != nullptr);
 						}
 					}
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_SAVE_P2")))
+			if (recordingButton("REC_SAVE_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3399,18 +3424,21 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer4, 550, recordedLength2P2, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer4, 550, recordedLength2P2, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P2 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength2P2, written, pRec != nullptr);
 
 						}
 					}
 				}
 			}
 
-			if (ImGui::Button(UiText("REC_LOAD_P1")))
+			if (recordingButton("REC_LOAD_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3425,10 +3453,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -3442,6 +3471,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -3451,6 +3481,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable2P1 = true;
 									recordedLength2P1 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P1 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex2P1 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -3480,7 +3512,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_LOAD_P2")))
+			if (recordingButton("REC_LOAD_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3495,10 +3527,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -3512,6 +3545,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -3521,6 +3555,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable2P2 = true;
 									recordedLength2P2 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P2 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex2P2 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -3555,7 +3591,7 @@ static void TheRecordPlaybackTab()
 		case 3:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_BOTH"))) {
+				if (recordingButton("REC_BOTH")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -3572,7 +3608,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P1"))) {
+				if (recordingButton("REC_P1")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -3588,7 +3624,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P2"))) {
+				if (recordingButton("REC_P2")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -3603,7 +3639,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex3P1 > 90 || recordReplayIndex3P2 > 90) {
-				if (ImGui::Button(UiText("REC_STOP"))) {
+				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -3620,7 +3656,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable3P1 && replayAvailable3P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
+					if (recordingButton("REC_PLAY_BOTH")) {
 						if (CheckTheMode() == true)
 						{
 
@@ -3635,7 +3671,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex3P1 > 90 || recordReplayIndex3P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP")))
+					if (recordingButton("REC_PLAY_STOP"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3649,7 +3685,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable3P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
+					if (recordingButton("REC_PLAY_P1")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -3659,7 +3695,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex3P1 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
+					if (recordingButton("REC_PLAY_STOP_P1"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3672,7 +3708,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable3P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
+					if (recordingButton("REC_PLAY_P2")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -3682,7 +3718,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex3P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
+					if (recordingButton("REC_PLAY_STOP_P2"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3696,7 +3732,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button(UiText("REC_SAVE_P1")))
+			if (recordingButton("REC_SAVE_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3712,17 +3748,20 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer5, 550, recordedLength3P1, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer5, 550, recordedLength3P1, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P1 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength3P1, written, pRec != nullptr);
 						}
 					}
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_SAVE_P2")))
+			if (recordingButton("REC_SAVE_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3739,18 +3778,21 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer6, 550, recordedLength3P2, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer6, 550, recordedLength3P2, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P2 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength3P2, written, pRec != nullptr);
 
 						}
 					}
 				}
 			}
 
-			if (ImGui::Button(UiText("REC_LOAD_P1")))
+			if (recordingButton("REC_LOAD_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3765,10 +3807,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -3782,6 +3825,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -3791,6 +3835,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable3P1 = true;
 									recordedLength3P1 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P1 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex3P1 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -3820,7 +3866,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_LOAD_P2")))
+			if (recordingButton("REC_LOAD_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -3835,10 +3881,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -3852,6 +3899,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -3861,6 +3909,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable3P2 = true;
 									recordedLength3P2 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P2 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex3P2 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -3895,7 +3945,7 @@ static void TheRecordPlaybackTab()
 		case 4:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_BOTH"))) {
+				if (recordingButton("REC_BOTH")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -3912,7 +3962,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P1"))) {
+				if (recordingButton("REC_P1")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -3928,7 +3978,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P2"))) {
+				if (recordingButton("REC_P2")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -3943,7 +3993,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex4P1 > 90 || recordReplayIndex4P2 > 90) {
-				if (ImGui::Button(UiText("REC_STOP"))) {
+				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -3960,7 +4010,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable4P1 && replayAvailable4P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
+					if (recordingButton("REC_PLAY_BOTH")) {
 						if (CheckTheMode() == true)
 						{
 
@@ -3975,7 +4025,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex4P1 > 90 || recordReplayIndex4P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP")))
+					if (recordingButton("REC_PLAY_STOP"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -3989,7 +4039,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable4P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
+					if (recordingButton("REC_PLAY_P1")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -3999,7 +4049,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex4P1 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
+					if (recordingButton("REC_PLAY_STOP_P1"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4012,7 +4062,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable4P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
+					if (recordingButton("REC_PLAY_P2")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -4022,7 +4072,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex4P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
+					if (recordingButton("REC_PLAY_STOP_P2"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4036,7 +4086,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button(UiText("REC_SAVE_P1")))
+			if (recordingButton("REC_SAVE_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4052,17 +4102,20 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer7, 550, recordedLength4P1, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer7, 550, recordedLength4P1, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P1 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength4P1, written, pRec != nullptr);
 						}
 					}
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_SAVE_P2")))
+			if (recordingButton("REC_SAVE_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4079,18 +4132,21 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer8, 550, recordedLength4P2, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer8, 550, recordedLength4P2, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P2 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength4P2, written, pRec != nullptr);
 
 						}
 					}
 				}
 			}
 
-			if (ImGui::Button(UiText("REC_LOAD_P1")))
+			if (recordingButton("REC_LOAD_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4105,10 +4161,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -4122,6 +4179,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -4131,6 +4189,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable4P1 = true;
 									recordedLength4P1 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P1 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex4P1 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -4160,7 +4220,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_LOAD_P2")))
+			if (recordingButton("REC_LOAD_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4175,10 +4235,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -4192,6 +4253,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -4201,6 +4263,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable4P2 = true;
 									recordedLength4P2 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P2 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex4P2 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -4235,7 +4299,7 @@ static void TheRecordPlaybackTab()
 		case 5:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_BOTH"))) {
+				if (recordingButton("REC_BOTH")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -4252,7 +4316,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P1"))) {
+				if (recordingButton("REC_P1")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -4268,7 +4332,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P2"))) {
+				if (recordingButton("REC_P2")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -4283,7 +4347,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndex5P1 > 90 || recordReplayIndex5P2 > 90) {
-				if (ImGui::Button(UiText("REC_STOP"))) {
+				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -4300,7 +4364,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable5P1 && replayAvailable5P2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
+					if (recordingButton("REC_PLAY_BOTH")) {
 						if (CheckTheMode() == true)
 						{
 
@@ -4315,7 +4379,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex5P1 > 90 || recordReplayIndex5P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP")))
+					if (recordingButton("REC_PLAY_STOP"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4329,7 +4393,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable5P1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
+					if (recordingButton("REC_PLAY_P1")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -4339,7 +4403,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex5P1 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
+					if (recordingButton("REC_PLAY_STOP_P1"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4352,7 +4416,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailable5P2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
+					if (recordingButton("REC_PLAY_P2")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -4362,7 +4426,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndex5P2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
+					if (recordingButton("REC_PLAY_STOP_P2"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4376,7 +4440,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button(UiText("REC_SAVE_P1")))
+			if (recordingButton("REC_SAVE_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4392,17 +4456,20 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer9, 550, recordedLength5P1, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer9, 550, recordedLength5P1, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P1 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength5P1, written, pRec != nullptr);
 						}
 					}
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_SAVE_P2")))
+			if (recordingButton("REC_SAVE_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4419,18 +4486,21 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer10, 550, recordedLength5P2, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer10, 550, recordedLength5P2, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P2 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLength5P2, written, pRec != nullptr);
 
 						}
 					}
 				}
 			}
 
-			if (ImGui::Button(UiText("REC_LOAD_P1")))
+			if (recordingButton("REC_LOAD_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4445,10 +4515,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -4462,6 +4533,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -4471,6 +4543,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable5P1 = true;
 									recordedLength5P1 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P1 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex5P1 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -4500,7 +4574,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_LOAD_P2")))
+			if (recordingButton("REC_LOAD_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4515,10 +4589,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -4532,6 +4607,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -4541,6 +4617,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailable5P2 = true;
 									recordedLength5P2 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P2 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndex5P2 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -4575,7 +4653,7 @@ static void TheRecordPlaybackTab()
 		default:
 
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_BOTH"))) {
+				if (recordingButton("REC_BOTH")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = true;
@@ -4593,7 +4671,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P1"))) {
+				if (recordingButton("REC_P1")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP1 = true;
@@ -4609,7 +4687,7 @@ static void TheRecordPlaybackTab()
 			}
 			//ImGui::SameLine();
 			if (!recordingP1 && !recordingP2) {
-				if (ImGui::Button(UiText("REC_P2"))) {
+				if (recordingButton("REC_P2")) {
 					if (CheckTheMode() == true)
 					{
 						recordingP2 = true;
@@ -4624,7 +4702,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			else if (recordReplayIndexP1 > 90 || recordReplayIndexP2 > 90) {
-				if (ImGui::Button(UiText("REC_STOP"))) {
+				if (recordingButton("REC_STOP")) {
 					if (CheckTheMode() == true)
 					{
 						//recording = false;
@@ -4641,7 +4719,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailableP1 && replayAvailableP2 && !recordingP1 && !recordingP2) {
 				if (!replayingP1 && !replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_BOTH"))) {
+					if (recordingButton("REC_PLAY_BOTH")) {
 						if (CheckTheMode() == true)
 						{
 
@@ -4656,7 +4734,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndexP1 > 90 || recordReplayIndexP2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP")))
+					if (recordingButton("REC_PLAY_STOP"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4670,7 +4748,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailableP1 && !recordingP1) {
 				if (!replayingP1) {
-					if (ImGui::Button(UiText("REC_PLAY_P1"))) {
+					if (recordingButton("REC_PLAY_P1")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP1 = true;
@@ -4680,7 +4758,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndexP1 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P1")))
+					if (recordingButton("REC_PLAY_STOP_P1"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4693,7 +4771,7 @@ static void TheRecordPlaybackTab()
 
 			if (replayAvailableP2 && !recordingP2) {
 				if (!replayingP2) {
-					if (ImGui::Button(UiText("REC_PLAY_P2"))) {
+					if (recordingButton("REC_PLAY_P2")) {
 						if (CheckTheMode() == true)
 						{
 							replayingP2 = true;
@@ -4703,7 +4781,7 @@ static void TheRecordPlaybackTab()
 					}
 				}
 				else if (recordReplayIndexP2 > 90) {
-					if (ImGui::Button(UiText("REC_PLAY_STOP_P2")))
+					if (recordingButton("REC_PLAY_STOP_P2"))
 					{
 						if (CheckTheMode() == true)
 						{
@@ -4717,7 +4795,7 @@ static void TheRecordPlaybackTab()
 			ImGui::Separator();
 
 			//Saves Recordings. Needs to be adjusted.
-			if (ImGui::Button(UiText("REC_SAVE_P1")))
+			if (recordingButton("REC_SAVE_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4733,17 +4811,20 @@ static void TheRecordPlaybackTab()
 						ofn.nMaxFile = sizeof(szFile) / sizeof(szFile[0]);
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer, 550, recordedLengthP1, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer, 550, recordedLengthP1, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P1 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLengthP1, written, pRec != nullptr);
 						}
 					}
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_SAVE_P2")))
+			if (recordingButton("REC_SAVE_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4760,11 +4841,14 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetSaveFileName(&ofn); }))
+						if (recordingFileDialog(ofn, true))
 						{
 							pRec = fopen(ofn.lpstrFile, "wb");
-							fwrite(replayBuffer2, 550, recordedLengthP2, pRec);
-							fclose(pRec);
+							const size_t written = pRec ? fwrite(replayBuffer2, 550, recordedLengthP2, pRec) : 0;
+							if (pRec)
+								fclose(pRec);
+							TrainingTeamEditor::TraceRecording("file saved slot=%d player=P2 requested=%d written=%zu opened=%d",
+								RecordingSlot, recordedLengthP2, written, pRec != nullptr);
 
 						}
 					}
@@ -4772,7 +4856,7 @@ static void TheRecordPlaybackTab()
 			}
 
 			//Loads Recordings. To Be Continued....
-			if (ImGui::Button(UiText("REC_LOAD_P1")))
+			if (recordingButton("REC_LOAD_P1"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4787,10 +4871,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -4804,6 +4889,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P1 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -4813,6 +4899,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailableP1 = true;
 									recordedLengthP1 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P1 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndexP1 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -4843,7 +4931,7 @@ static void TheRecordPlaybackTab()
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(UiText("REC_LOAD_P2")))
+			if (recordingButton("REC_LOAD_P2"))
 			{
 				if (CheckTheMode() == true)
 				{
@@ -4858,10 +4946,11 @@ static void TheRecordPlaybackTab()
 						ofn.lpstrFilter = ofn.lpstrDefExt = szExt;
 						ofn.Flags = OFN_SHOWHELP | OFN_OVERWRITEPROMPT;
 
-						if (outsideRecordingLock([&] { return GetOpenFileName(&ofn); }))
+						if (recordingFileDialog(ofn, false))
 						{
 							if (ofn.lStructSize > (ReplayBufferSize * ReplayLength))
 							{
+								TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=too_large", RecordingSlot);
 								outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_TOO_LARGE").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 
 							}
@@ -4875,6 +4964,7 @@ static void TheRecordPlaybackTab()
 
 								if (filesize % 550 != 0)
 								{
+									TrainingTeamEditor::TraceRecording("file rejected slot=%d player=P2 reason=invalid_size", RecordingSlot);
 									outsideRecordingLock([&] { return MessageBoxW(hWnd, Localizer::UiWideText("REC_INVALID").c_str(), L"UMVC3 Training Tools", MB_ICONINFORMATION); });
 								}
 								else
@@ -4884,6 +4974,8 @@ static void TheRecordPlaybackTab()
 									int length = pos / 550;
 									replayAvailableP2 = true;
 									recordedLengthP2 = length;
+									TrainingTeamEditor::TraceRecording("file loading slot=%d player=P2 bytes=%d frames=%d",
+										RecordingSlot, filesize, length);
 									recordReplayIndexP2 = 0;
 
 									mRP.seekg(0, std::ios::beg);
@@ -4920,12 +5012,7 @@ static void TheRecordPlaybackTab()
 		{
 			ImGui::TextUnformatted(UiText("REC_SLOT_TITLE"));
 			if (ImGui::SliderInt(UiText("REC_SLOT"), &RecordingSlot, 1, 5))
-			{
-				if (CheckTheMode() == true)
-				{
-
-				}
-			}
+				TrainingTeamEditor::TraceRecording("manual slot selected slot=%d", RecordingSlot);
 		}
 		ImGui::EndTabItem();
 	}
@@ -5099,7 +5186,9 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			Trampoline* tramp = Trampoline::MakeTrampoline(GetModuleHandle(nullptr));
 			InjectHook(_addr(0x140289c5a), tramp->Jump(FUN_1402b41b0), HookType::Call);
 			recordingHookInstalled = true;
+			TrainingTeamEditor::TraceRecording("game input hook installed");
 		}
+		TrainingTeamEditor::FlushRecordingLog();
 
 		if (!ShowToolWindow)
 		{

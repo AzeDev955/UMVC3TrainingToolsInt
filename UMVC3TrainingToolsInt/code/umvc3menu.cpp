@@ -17,6 +17,7 @@
 #include <ctime>
 #include "umvc3utils.h"
 #include "TrainingTeamEditor.h"
+#include "TrainingPad.h"
 
 
 //Gotta port these to safer internal commands.
@@ -4263,6 +4264,95 @@ namespace
 		{ replayBuffer10, replayAvailable5P2, recordedLength5P2 },
 	};
 
+	struct ReplayPositions
+	{
+		const int& p1;
+		const int& p2;
+		const int& p1Length;
+	};
+
+	const ReplayPositions RecordingPositions[] = {
+		{ recordReplayIndexP1, recordReplayIndexP2, recordedLengthP1 },
+		{ recordReplayIndex2P1, recordReplayIndex2P2, recordedLength2P1 },
+		{ recordReplayIndex3P1, recordReplayIndex3P2, recordedLength3P1 },
+		{ recordReplayIndex4P1, recordReplayIndex4P2, recordedLength4P1 },
+		{ recordReplayIndex5P1, recordReplayIndex5P2, recordedLength5P1 },
+	};
+
+	constexpr size_t PlayerInputStride = 0x2c0;
+
+	struct RecordingTrace
+	{
+		int slot = 0;
+		unsigned players = 0;
+		unsigned samples = 0;
+		std::array<unsigned, 2> bufferChanges{};
+		std::array<unsigned, 2> firstBufferChange{};
+		std::array<std::array<uint8_t, ReplayBufferSize>, 2> previousInput{};
+		std::array<TrainingPad::InputCounts, XUSER_MAX_COUNT> initialPads{};
+	};
+
+	RecordingTrace recordingTrace;
+
+	unsigned PlayerMask(bool p1, bool p2)
+	{
+		return (p1 ? 1u : 0u) | (p2 ? 2u : 0u);
+	}
+
+	void TraceRecordingEnd(int slot, const char* reason)
+	{
+		const auto& trace = recordingTrace;
+		const auto& positions = RecordingPositions[slot - 1];
+		TrainingTeamEditor::TraceRecording(
+			"capture ended slot=%d players=%u reason=%s samples=%u p1_buffer_changes=%u p2_buffer_changes=%u p1_first_change=%u p2_first_change=%u p1_index=%d p2_index=%d p1_length=%d p2_length=%d",
+			slot, trace.players, reason, trace.samples, trace.bufferChanges[0], trace.bufferChanges[1],
+			trace.firstBufferChange[0], trace.firstBufferChange[1], positions.p1, positions.p2,
+			positions.p1Length, DummyRecordings[slot - 1].length);
+
+		const auto pads = TrainingPad::ReadInputCounts();
+		for (size_t index = 0; index < pads.size(); ++index)
+		{
+			const auto& first = trace.initialPads[index];
+			const auto& last = pads[index];
+			TrainingTeamEditor::TraceRecording("capture XInput index=%zu successful_polls=%u active_polls=%u suppressed_active_polls=%u",
+				index, last.polls - first.polls, last.active - first.active, last.suppressed - first.suppressed);
+		}
+	}
+
+	void TraceRecordingInput(int slot, unsigned players, const uint8_t* input)
+	{
+		auto& trace = recordingTrace;
+		if (slot != trace.slot || players != trace.players)
+		{
+			if (trace.players)
+				TraceRecordingEnd(trace.slot, slot == trace.slot ? "stopped" : "slot_changed");
+			trace = {};
+			trace.slot = slot;
+			trace.players = players;
+			if (players)
+			{
+				trace.initialPads = TrainingPad::ReadInputCounts();
+				TrainingTeamEditor::TraceRecording("capture started slot=%d players=%u", slot, players);
+			}
+		}
+		if (!players)
+			return;
+
+		for (size_t side = 0; side < trace.previousInput.size(); ++side)
+		{
+			const auto native = input + side * PlayerInputStride;
+			auto& previous = trace.previousInput[side];
+			if (trace.samples && memcmp(previous.data(), native, previous.size()) != 0)
+			{
+				if (trace.bufferChanges[side] == 0)
+					trace.firstBufferChange[side] = trace.samples + 1;
+				++trace.bufferChanges[side];
+			}
+			memcpy(previous.data(), native, previous.size());
+		}
+		++trace.samples;
+	}
+
 	enum class DummyStun { None, Hit, Block };
 
 	struct DummyReactionState
@@ -4279,6 +4369,21 @@ namespace
 	};
 
 	DummyReactionState dummyReaction;
+
+	const char* StunName(DummyStun stun)
+	{
+		if (stun == DummyStun::Hit)
+			return "hit";
+		return stun == DummyStun::Block ? "block" : "none";
+	}
+
+	void TraceDummyEnd(const char* reason, uint32_t frame)
+	{
+		const auto& state = dummyReaction;
+		if (state.event != DummyStun::None)
+			TrainingTeamEditor::TraceRecording("reaction ended event=%s slot=%d frame=%u played=%d reason=%s",
+				StunName(state.event), state.reaction.slot, frame, state.playbackFrame, reason);
+	}
 
 	uintptr_t GetActiveDummy()
 	{
@@ -4319,6 +4424,7 @@ namespace
 		auto& state = dummyReaction;
 		if (manualP2PlaybackOrRecording || (!DummyOnHit.slot && !DummyOnBlock.slot))
 		{
+			TraceDummyEnd(manualP2PlaybackOrRecording ? "manual_p2" : "disabled", state.frame);
 			state = {};
 			return;
 		}
@@ -4327,6 +4433,7 @@ namespace
 		const auto fighter = action ? GetActiveDummy() : 0;
 		if (!fighter || *reinterpret_cast<const float*>(fighter + 0x1550) <= 0.0f)
 		{
+			TraceDummyEnd(!action ? "training_inactive" : "p2_unavailable", state.frame);
 			state = {};
 			return;
 		}
@@ -4336,6 +4443,9 @@ namespace
 		const auto stun = ReadDummyStun(fighter);
 		if (action != state.action || fighter != state.fighter || frame < state.frame)
 		{
+			TraceDummyEnd("combat_context_changed", frame);
+			TrainingTeamEditor::TraceRecording("reaction tracking frame=%u fighter=%p stun=%s",
+				frame, reinterpret_cast<const void*>(fighter), StunName(stun));
 			state = {};
 			state.action = action;
 			state.fighter = fighter;
@@ -4351,8 +4461,16 @@ namespace
 
 		const auto previousStun = state.stun;
 		state.stun = stun;
+		if (stun != previousStun)
+		{
+			const auto timers = reinterpret_cast<const float*>(fighter + 0x4154);
+			TrainingTeamEditor::TraceRecording(
+				"p2 stun frame=%u from=%s to=%s ground=%.2f block=%.2f air=%.2f",
+				frame, StunName(previousStun), StunName(stun), timers[0], timers[1], timers[2]);
+		}
 		if (stun != DummyStun::None)
 		{
+			TraceDummyEnd("new_stun", frame);
 			state.event = DummyStun::None;
 			state.lastInput = nullptr;
 			return;
@@ -4364,6 +4482,8 @@ namespace
 			state.reaction = previousStun == DummyStun::Hit ? DummyOnHit : DummyOnBlock;
 			state.recoveryFrame = frame;
 			state.playbackFrame = 0;
+			TrainingTeamEditor::TraceRecording("reaction scheduled event=%s slot=%d recovery_frame=%u delay=%d",
+				StunName(state.event), state.reaction.slot, frame, state.reaction.delay);
 		}
 
 		if (state.event == DummyStun::None)
@@ -4372,6 +4492,8 @@ namespace
 		if (configured.slot != state.reaction.slot || configured.delay != state.reaction.delay
 			|| !HasDummyRecording(configured.slot))
 		{
+			TraceDummyEnd(configured.slot != state.reaction.slot || configured.delay != state.reaction.delay
+				? "configuration_changed" : configured.slot ? "recording_unavailable" : "disabled", frame);
 			state.event = DummyStun::None;
 			state.lastInput = nullptr;
 			return;
@@ -4388,9 +4510,14 @@ namespace
 			return;
 		if (state.playbackFrame >= recording.length)
 		{
+			TraceDummyEnd("completed", frame);
 			state.event = DummyStun::None;
 			return;
 		}
+		if (state.playbackFrame == 0)
+			TrainingTeamEditor::TraceRecording(
+				"reaction playback started event=%s slot=%d frame=%u elapsed=%u length=%d",
+				StunName(state.event), configured.slot, frame, frame - state.recoveryFrame, recording.length);
 		state.lastInput = recording.frames[state.playbackFrame++];
 		memcpy(p2Input, state.lastInput, ReplayBufferSize);
 	}
@@ -4408,6 +4535,28 @@ void FUN_1402b41b0(longlong param_1)
 {
 	((void (*)(longlong))_addr(0x1402b41b0))(param_1);
 	const std::lock_guard lock(RecordingMutex);
+	const int traceSlot = RecordingSlot >= 1 && RecordingSlot <= 5 ? RecordingSlot : 1;
+	const auto input = reinterpret_cast<uint8_t*>(param_1);
+	const auto recordingPlayers = recording ? 3u : PlayerMask(recordingP1, recordingP2);
+	const auto playbackPlayers = replaying ? 3u : PlayerMask(replayingP1, replayingP2);
+	static unsigned lastPlaybackPlayers = 0;
+	static int lastPlaybackSlot = 0;
+	if (playbackPlayers != lastPlaybackPlayers || (playbackPlayers && traceSlot != lastPlaybackSlot))
+	{
+		const auto& positions = RecordingPositions[traceSlot - 1];
+		TrainingTeamEditor::TraceRecording("manual playback slot=%d players=%u previous=%u p1_index=%d p2_index=%d",
+			traceSlot, playbackPlayers, lastPlaybackPlayers, positions.p1, positions.p2);
+		lastPlaybackPlayers = playbackPlayers;
+		lastPlaybackSlot = traceSlot;
+	}
+	static uintptr_t lastInputRef = 0;
+	if (lastInputRef != static_cast<uintptr_t>(param_1))
+	{
+		lastInputRef = static_cast<uintptr_t>(param_1);
+		TrainingTeamEditor::TraceRecording("game input hook context=%p cached_context=%p",
+			input, reinterpret_cast<const void*>(inputRef));
+	}
+	TraceRecordingInput(traceSlot, recordingPlayers, input);
 	const bool manualP2PlaybackOrRecording = recording || recordingP2 || replaying || replayingP2;
 	switch (RecordingSlot)
 	{
@@ -4779,5 +4928,5 @@ void FUN_1402b41b0(longlong param_1)
 		break;
 	}
 
-	ApplyDummyReaction(reinterpret_cast<uint8_t*>(param_1) + 0x2c0, manualP2PlaybackOrRecording);
+	ApplyDummyReaction(input + PlayerInputStride, manualP2PlaybackOrRecording);
 }

@@ -20,6 +20,8 @@ namespace TrainingTeamEditor
 	bool DrawQuickSetup();
 	void TraceQuickShortcut(const char* event);
 	void TraceQuickSelection(int p1Phase, int p2Phase, int mode);
+	void TraceRecording(const char* format, ...);
+	void FlushRecordingLog();
 	bool PrepareQuickMatch(const TrainingShortcut::TeamPicks& picks);
 	bool IsTrainingPlayable();
 	uintptr_t GetFightingAction();
