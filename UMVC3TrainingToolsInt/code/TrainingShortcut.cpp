@@ -10,8 +10,10 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
 #include <d3d9.h>
 #include <mutex>
+#include <vector>
 
 namespace
 {
@@ -60,7 +62,9 @@ namespace
 		{ 103, 0x140d50a98 }, { 104, 0x140d50ae0 }, { 105, 0x140d50b28 }, { 106, 0x140d50b60 },
 		{ 107, 0x140d50ba8 }, { 109, 0x140d50be0 }, { 110, 0x140d50c28 }
 	};
+	constexpr unsigned PresentSlot = 17;
 	constexpr unsigned EndSceneSlot = 42;
+	constexpr unsigned SwapChainPresentSlot = 3;
 	constexpr int MainMenuPhase = 1;
 	constexpr int OfflineMenuPhase = 2;
 	constexpr int MenuReady = 7;
@@ -78,6 +82,7 @@ namespace
 	constexpr int TextureWidth = 256;
 	constexpr int TextureHeight = 64;
 	constexpr ULONGLONG TransitionTimeoutMs = 30000;
+	constexpr ULONGLONG LoadingFrameTimeoutMs = 150;
 
 	using MenuUpdate = void (*)(void*);
 	using MenuSetState = void (*)(void*, int);
@@ -85,6 +90,8 @@ namespace
 	using FinishSelection = void (*)(void*, int);
 	using StageConfirm = void (*)(void*);
 	using EndScene = HRESULT (WINAPI*)(IDirect3DDevice9*);
+	using Present = HRESULT (WINAPI*)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
+	using SwapChainPresent = HRESULT (WINAPI*)(IDirect3DSwapChain9*, const RECT*, const RECT*, HWND, const RGNDATA*, DWORD);
 	using SetGameValue = void (*)(uintptr_t, int);
 	using ResolveStage = int (*)(uintptr_t, int);
 	using QueueScene = void (*)(uintptr_t, uintptr_t);
@@ -93,11 +100,19 @@ namespace
 	MenuUpdate originalOfflineUpdate = nullptr;
 	SelectUpdate originalSelectUpdate = nullptr;
 	EndScene originalEndScene = nullptr;
+	Present originalPresent = nullptr;
+	SwapChainPresent originalSwapChainPresent = nullptr;
 	HWND toolWindow = nullptr;
 	IDirect3DDevice9* textureDevice = nullptr;
 	bool textureSpanish = false;
 	bool textureLoading = false;
 	IDirect3DTexture9* overlayTexture = nullptr;
+	UINT overlayTextureWidth = TextureWidth;
+	IDirect3DSurface9* loadingSurface = nullptr;
+	IDirect3DDevice9* loadingDevice = nullptr;
+	D3DSURFACE_DESC loadingSurfaceDesc{};
+	bool loadingSurfaceSpanish = false;
+	thread_local bool presentingFromDevice = false;
 	bool mouseWasDown = false;
 	bool keyWasDown = false;
 	bool firstGameEndScene = true;
@@ -118,6 +133,8 @@ namespace
 
 	std::atomic<Request> request{ Request::None };
 	std::atomic<ULONGLONG> requestDeadline{ 0 };
+	std::atomic<ULONGLONG> loadingFrameDeadline{ 0 };
+	std::atomic<bool> loadingFramePresented{ false };
 	std::atomic<bool> setupRequested{ false };
 	std::atomic<bool> shortcutAvailable{ false };
 	std::atomic<HWND> gameWindow{ nullptr };
@@ -137,6 +154,11 @@ namespace
 		int phase{};
 		int state{};
 	};
+
+	bool IsDirectLoading(Request step)
+	{
+		return step == Request::OpenDirect || step == Request::WaitForBattle;
+	}
 
 	uintptr_t GameAddress(uintptr_t address)
 	{
@@ -328,6 +350,8 @@ namespace
 		{
 			if (step == Request::OpenDirect)
 			{
+				if (!loadingFramePresented.load() && GetTickCount64() < loadingFrameDeadline.load())
+					return;
 				if (QueueDirectTraining())
 					return;
 				TrainingTeamEditor::TraceQuickShortcut("direct launch preflight failed; using native menus");
@@ -500,16 +524,28 @@ namespace
 		textureDevice = nullptr;
 	}
 
-	bool CreateOverlayTexture(IDirect3DDevice9* device, bool spanish, bool loading)
+	std::vector<uint32_t> CreateOverlayPixels(UINT& width, UINT height, const wchar_t* label, bool fitLabel)
 	{
 		HDC dc = CreateCompatibleDC(nullptr);
 		if (!dc)
-			return false;
+			return {};
+
+		HFONT font = CreateFontW(-MulDiv(26, static_cast<int>(height), TextureHeight), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+			OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+		HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
+		constexpr UINT textFlags = DT_SINGLELINE | DT_NOPREFIX;
+		if (fitLabel)
+		{
+			RECT textBounds{};
+			DrawTextW(dc, label, -1, &textBounds, textFlags | DT_CALCRECT);
+			const int horizontalPadding = MulDiv(20, static_cast<int>(height), TextureHeight);
+			width = (std::max)(width, static_cast<UINT>(textBounds.right - textBounds.left + 2 * horizontalPadding));
+		}
 
 		BITMAPINFO info{};
 		info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-		info.bmiHeader.biWidth = TextureWidth;
-		info.bmiHeader.biHeight = -TextureHeight;
+		info.bmiHeader.biWidth = static_cast<LONG>(width);
+		info.bmiHeader.biHeight = -static_cast<LONG>(height);
 		info.bmiHeader.biPlanes = 1;
 		info.bmiHeader.biBitCount = 32;
 		info.bmiHeader.biCompression = BI_RGB;
@@ -518,48 +554,25 @@ namespace
 		if (!bitmap)
 		{
 			DeleteDC(dc);
-			return false;
+			if (font)
+				DeleteObject(font);
+			return {};
 		}
 
 		HGDIOBJ oldBitmap = SelectObject(dc, bitmap);
-		RECT bounds{ 0, 0, TextureWidth, TextureHeight };
+		RECT bounds{ 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
 		SetDCBrushColor(dc, RGB(28, 43, 64));
 		FillRect(dc, &bounds, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
 		SetDCBrushColor(dc, RGB(110, 184, 236));
 		FrameRect(dc, &bounds, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
-		HFONT font = CreateFontW(-26, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-			OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-		HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
 		SetTextColor(dc, RGB(240, 247, 255));
 		SetBkMode(dc, TRANSPARENT);
-		const auto label = loading ? Localizer::UiWideText("QUICK_LOADING")
-			: std::wstring(spanish ? L"Entrenar  [F4]" : L"Training  [F4]");
-		DrawTextW(dc, label.c_str(), -1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+		DrawTextW(dc, label, -1, &bounds, textFlags | DT_CENTER | DT_VCENTER);
 		GdiFlush();
-
-		IDirect3DTexture9* texture = nullptr;
-		if (SUCCEEDED(device->CreateTexture(TextureWidth, TextureHeight, 1, 0, D3DFMT_A8R8G8B8,
-			D3DPOOL_MANAGED, &texture, nullptr)))
-		{
-			D3DLOCKED_RECT mapped{};
-			if (SUCCEEDED(texture->LockRect(0, &mapped, nullptr, 0)))
-			{
-				const auto* source = static_cast<const uint32_t*>(bitmapPixels);
-				for (int row = 0; row < TextureHeight; ++row)
-				{
-					auto* destination = reinterpret_cast<uint32_t*>(static_cast<char*>(mapped.pBits) + row * mapped.Pitch);
-					for (int column = 0; column < TextureWidth; ++column)
-						destination[column] = source[row * TextureWidth + column] | 0xff000000u;
-				}
-				texture->UnlockRect(0);
-				overlayTexture = texture;
-				textureDevice = device;
-				textureSpanish = spanish;
-				textureLoading = loading;
-			}
-			else
-				texture->Release();
-		}
+		const auto* source = static_cast<const uint32_t*>(bitmapPixels);
+		std::vector<uint32_t> pixels(source, source + static_cast<size_t>(width) * height);
+		for (auto& pixel : pixels)
+			pixel |= 0xff000000u;
 
 		if (oldFont)
 			SelectObject(dc, oldFont);
@@ -568,7 +581,158 @@ namespace
 		SelectObject(dc, oldBitmap);
 		DeleteObject(bitmap);
 		DeleteDC(dc);
+		return pixels;
+	}
+
+	void CopyOverlayPixels(const std::vector<uint32_t>& pixels, UINT width, UINT height, const D3DLOCKED_RECT& mapped)
+	{
+		for (UINT row = 0; row < height; ++row)
+		{
+			auto* destination = static_cast<char*>(mapped.pBits) + row * mapped.Pitch;
+			std::memcpy(destination, pixels.data() + row * width, width * sizeof(uint32_t));
+		}
+	}
+
+	bool CreateOverlayTexture(IDirect3DDevice9* device, bool spanish, bool loading)
+	{
+		const auto label = loading ? Localizer::UiWideText("QUICK_LOADING")
+			: std::wstring(spanish ? L"Entrenar  [F4]" : L"Training  [F4]");
+		UINT width = TextureWidth;
+		const auto pixels = CreateOverlayPixels(width, TextureHeight, label.c_str(), loading);
+		if (pixels.empty())
+			return false;
+
+		IDirect3DTexture9* texture = nullptr;
+		if (SUCCEEDED(device->CreateTexture(width, TextureHeight, 1, 0, D3DFMT_A8R8G8B8,
+			D3DPOOL_MANAGED, &texture, nullptr)))
+		{
+			D3DLOCKED_RECT mapped{};
+			if (SUCCEEDED(texture->LockRect(0, &mapped, nullptr, 0)))
+			{
+				CopyOverlayPixels(pixels, width, TextureHeight, mapped);
+				texture->UnlockRect(0);
+				overlayTexture = texture;
+				overlayTextureWidth = width;
+				textureDevice = device;
+				textureSpanish = spanish;
+				textureLoading = loading;
+			}
+			else
+				texture->Release();
+		}
+
 		return overlayTexture != nullptr;
+	}
+
+	void ReleaseLoadingSurface()
+	{
+		if (loadingSurface)
+			loadingSurface->Release();
+		loadingSurface = nullptr;
+		loadingDevice = nullptr;
+	}
+
+	bool DrawLoadingBackBuffer(IDirect3DDevice9* device, IDirect3DSurface9* backBuffer, const RECT* source)
+	{
+		D3DSURFACE_DESC target{};
+		if (FAILED(backBuffer->GetDesc(&target)) || target.MultiSampleType != D3DMULTISAMPLE_NONE
+			|| (target.Format != D3DFMT_X8R8G8B8 && target.Format != D3DFMT_A8R8G8B8))
+			return false;
+
+		const RECT bounds{ 0, 0, static_cast<LONG>(target.Width), static_cast<LONG>(target.Height) };
+		RECT visible = bounds;
+		if (source && !IntersectRect(&visible, &bounds, source))
+			return false;
+		const LONG availableWidth = visible.right - visible.left;
+		const LONG availableHeight = visible.bottom - visible.top;
+		const float scale = (std::max)(0.60f, availableHeight / 720.0f);
+		const UINT height = static_cast<UINT>(56.0f * scale);
+		if (height > static_cast<UINT>(availableHeight))
+			return false;
+
+		const bool spanish = Localizer::IsSpanish();
+		if (loadingDevice != device || loadingSurfaceDesc.Height != height
+			|| loadingSurfaceDesc.Format != target.Format || loadingSurfaceSpanish != spanish)
+		{
+			ReleaseLoadingSurface();
+			const auto label = Localizer::UiWideText("QUICK_LOADING");
+			UINT width = MulDiv(TextureWidth, height, TextureHeight);
+			const auto pixels = CreateOverlayPixels(width, height, label.c_str(), true);
+			if (pixels.empty() || FAILED(device->CreateOffscreenPlainSurface(width, height, target.Format,
+				D3DPOOL_SYSTEMMEM, &loadingSurface, nullptr)))
+				return false;
+			D3DLOCKED_RECT mapped{};
+			if (FAILED(loadingSurface->LockRect(&mapped, nullptr, 0)))
+			{
+				ReleaseLoadingSurface();
+				return false;
+			}
+			CopyOverlayPixels(pixels, width, height, mapped);
+			loadingSurface->UnlockRect();
+			loadingDevice = device;
+			loadingSurfaceDesc.Width = width;
+			loadingSurfaceDesc.Height = height;
+			loadingSurfaceDesc.Format = target.Format;
+			loadingSurfaceSpanish = spanish;
+		}
+
+		const LONG width = static_cast<LONG>(loadingSurfaceDesc.Width);
+		if (width > availableWidth)
+			return false;
+		const POINT center{ visible.left + (availableWidth - width) / 2,
+			visible.top + (availableHeight - static_cast<LONG>(height)) / 2 };
+		return SUCCEEDED(device->UpdateSurface(loadingSurface, nullptr, backBuffer, &center));
+	}
+
+	bool IsGameDevice(IDirect3DDevice9* device)
+	{
+		D3DDEVICE_CREATION_PARAMETERS parameters{};
+		return SUCCEEDED(device->GetCreationParameters(&parameters))
+			&& parameters.hFocusWindow && parameters.hFocusWindow != toolWindow;
+	}
+
+	void ReportLoadingFrame(HRESULT result, bool drawn)
+	{
+		if (result == D3D_OK && drawn && !loadingFramePresented.exchange(true))
+			TrainingTeamEditor::TraceQuickShortcut("direct Training loading frame presented");
+	}
+
+	HRESULT WINAPI PresentGame(IDirect3DDevice9* device, const RECT* source, const RECT* destination,
+		HWND window, const RGNDATA* dirty)
+	{
+		bool drawn = false;
+		IDirect3DSurface9* backBuffer = nullptr;
+		if (IsDirectLoading(request.load()) && IsGameDevice(device)
+			&& SUCCEEDED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)))
+		{
+			drawn = DrawLoadingBackBuffer(device, backBuffer, source);
+			backBuffer->Release();
+		}
+		presentingFromDevice = drawn;
+		const auto result = originalPresent(device, source, destination, window, dirty);
+		presentingFromDevice = false;
+		ReportLoadingFrame(result, drawn);
+		return result;
+	}
+
+	HRESULT WINAPI PresentGameSwapChain(IDirect3DSwapChain9* swapChain, const RECT* source, const RECT* destination,
+		HWND window, const RGNDATA* dirty, DWORD flags)
+	{
+		bool drawn = false;
+		IDirect3DDevice9* device = nullptr;
+		if (!presentingFromDevice && IsDirectLoading(request.load()) && SUCCEEDED(swapChain->GetDevice(&device)))
+		{
+			IDirect3DSurface9* backBuffer = nullptr;
+			if (IsGameDevice(device) && SUCCEEDED(swapChain->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)))
+			{
+				drawn = DrawLoadingBackBuffer(device, backBuffer, source);
+				backBuffer->Release();
+			}
+			device->Release();
+		}
+		const auto result = originalSwapChainPresent(swapChain, source, destination, window, dirty, flags);
+		ReportLoadingFrame(result, drawn);
+		return result;
 	}
 
 	struct Vertex
@@ -589,8 +753,14 @@ namespace
 		}
 
 		const float scale = (std::max)(0.60f, viewport.Height / 720.0f);
-		const float width = (loading ? 224.0f : 188.0f) * scale;
-		const float height = (loading ? 56.0f : 46.0f) * scale;
+		float height = (loading ? 56.0f : 46.0f) * scale;
+		float width = 188.0f * scale;
+		if (loading)
+		{
+			const float aspectRatio = static_cast<float>(overlayTextureWidth) / TextureHeight;
+			height = (std::min)({ height, static_cast<float>(viewport.Height), viewport.Width / aspectRatio });
+			width = height * aspectRatio;
+		}
 		const float left = viewport.X + (loading ? (viewport.Width - width) * 0.5f : viewport.Width - width - 28.0f * scale);
 		const float top = viewport.Y + (loading ? (viewport.Height - height) * 0.5f : viewport.Height - height - 62.0f * scale);
 		const float right = left + width;
@@ -664,9 +834,10 @@ namespace
 				TrainingTeamEditor::TraceQuickShortcut("game EndScene observed");
 				firstGameEndScene = false;
 			}
-			const auto step = request.load();
-			const bool loading = step == Request::OpenDirect || step == Request::WaitForBattle;
-			if (loading || IsReadyMenu(ReadMenu(), MainMenuPhase, MainMenuTable))
+			const bool loading = IsDirectLoading(request.load());
+			if (!loading && loadingDevice == device)
+				ReleaseLoadingSurface();
+			if (loading ? !loadingFramePresented.load() : IsReadyMenu(ReadMenu(), MainMenuPhase, MainMenuTable))
 			{
 				D3DVIEWPORT9 viewport{};
 				if (SUCCEEDED(device->GetViewport(&viewport)))
@@ -767,7 +938,10 @@ void TrainingShortcut::DispatchTraining()
 	if (const auto window = gameWindow.load())
 		SetForegroundWindow(window);
 	lastLaunchProgress = { -1, -1, -1 };
-	requestDeadline.store(GetTickCount64() + TransitionTimeoutMs);
+	const auto now = GetTickCount64();
+	requestDeadline.store(now + TransitionTimeoutMs);
+	loadingFramePresented.store(false);
+	loadingFrameDeadline.store(now + LoadingFrameTimeoutMs);
 	TrainingTeamEditor::TraceQuickShortcut("tool renderer idle; waiting for main menu update");
 	request.store(queuedDirect ? Request::OpenDirect : Request::OpenOffline);
 }
@@ -842,14 +1016,45 @@ void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
 	}
 	void* endSceneTarget = (*reinterpret_cast<void***>(toolDevice))[EndSceneSlot];
 	const auto createOverlay = MH_CreateHook(endSceneTarget, reinterpret_cast<void*>(DrawGameMenu), &original);
-	if (createOverlay != MH_OK)
+	if (createOverlay == MH_OK)
 	{
-		TraceHook("could not hook Direct3D overlay", createOverlay);
-		return;
+		originalEndScene = reinterpret_cast<EndScene>(original);
+		const auto enableOverlay = MH_EnableHook(endSceneTarget);
+		TraceHook("Direct3D overlay hook", enableOverlay);
+		if (enableOverlay != MH_OK)
+			MH_RemoveHook(endSceneTarget);
 	}
-	originalEndScene = reinterpret_cast<EndScene>(original);
-	const auto enableOverlay = MH_EnableHook(endSceneTarget);
-	TraceHook("Direct3D overlay hook", enableOverlay);
-	if (enableOverlay != MH_OK)
-		MH_RemoveHook(endSceneTarget);
+	else
+		TraceHook("could not hook Direct3D overlay", createOverlay);
+
+	void* presentTarget = (*reinterpret_cast<void***>(toolDevice))[PresentSlot];
+	const auto createPresent = MH_CreateHook(presentTarget, reinterpret_cast<void*>(PresentGame), &original);
+	if (createPresent == MH_OK)
+	{
+		originalPresent = reinterpret_cast<Present>(original);
+		const auto enablePresent = MH_EnableHook(presentTarget);
+		TraceHook("Direct3D loading Present hook", enablePresent);
+		if (enablePresent != MH_OK)
+			MH_RemoveHook(presentTarget);
+	}
+	else
+		TraceHook("could not hook Direct3D loading Present", createPresent);
+
+	IDirect3DSwapChain9* swapChain = nullptr;
+	if (SUCCEEDED(toolDevice->GetSwapChain(0, &swapChain)))
+	{
+		void* swapChainTarget = (*reinterpret_cast<void***>(swapChain))[SwapChainPresentSlot];
+		const auto createSwapChain = MH_CreateHook(swapChainTarget, reinterpret_cast<void*>(PresentGameSwapChain), &original);
+		if (createSwapChain == MH_OK)
+		{
+			originalSwapChainPresent = reinterpret_cast<SwapChainPresent>(original);
+			const auto enableSwapChain = MH_EnableHook(swapChainTarget);
+			TraceHook("Direct3D loading swap-chain hook", enableSwapChain);
+			if (enableSwapChain != MH_OK)
+				MH_RemoveHook(swapChainTarget);
+		}
+		else
+			TraceHook("could not hook Direct3D loading swap-chain", createSwapChain);
+		swapChain->Release();
+	}
 }
