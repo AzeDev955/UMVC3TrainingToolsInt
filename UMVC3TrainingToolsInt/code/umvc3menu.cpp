@@ -4478,6 +4478,7 @@ namespace
 	constexpr uintptr_t GroundHitstunOffset = 0x4154;
 	constexpr uintptr_t BlockstunOffset = 0x4158;
 	constexpr uintptr_t AirHitstunOffset = 0x415c;
+	constexpr uintptr_t FighterActionOffset = 0x1310;
 	constexpr uintptr_t FighterActionFlagsOffset = 0x14f4;
 	constexpr uintptr_t HitStateFlagsOffset = 0x14f8;
 	constexpr uintptr_t HitRecoveryFlagsOffset = 0x14fc;
@@ -4488,6 +4489,8 @@ namespace
 	constexpr uint32_t AirHitMotionSuppressed = 0x8000;
 	constexpr uint32_t WakeupInProgress = 0x80000;
 	constexpr uint32_t IncomingInProgress = 0x8000000;
+	constexpr uint32_t IncomingInitialRestrictions = 0xa0000;
+	constexpr uint32_t FighterAirborne = 0x20;
 
 	struct DummyReactionState
 	{
@@ -4501,6 +4504,7 @@ namespace
 		uint32_t recoveryFrame = 0;
 		int playbackFrame = 0;
 		const uint8_t* lastInput = nullptr;
+		std::optional<uint32_t> incomingPlaybackAction;
 	};
 
 	DummyReactionState dummyReaction;
@@ -4638,11 +4642,12 @@ namespace
 		}
 
 		const auto actionFlags = *reinterpret_cast<const uint32_t*>(fighter + FighterActionFlagsOffset);
-		const bool incomingLocked = (actionFlags & IncomingInProgress) != 0;
+		const auto recoveryFlags = *reinterpret_cast<const uint32_t*>(fighter + HitRecoveryFlagsOffset);
+		const bool entering = (actionFlags & IncomingInProgress) != 0;
 		if (fighter != state.fighter)
 		{
 			const auto outgoing = state.fighter;
-			const bool afterKO = DummyOnIncoming.slot && incomingLocked && outgoing
+			const bool afterKO = DummyOnIncoming.slot && entering && outgoing
 				&& std::find(team.begin(), team.end(), outgoing) != team.end() && CheckIfDead(outgoing);
 			TraceDummyEnd("combat_context_changed", frame);
 			state = {};
@@ -4654,13 +4659,15 @@ namespace
 				: ReadDummyRecovery(fighter, DummyRecovery::None, DummyOnWakeup.slot != 0);
 			TrainingTeamEditor::TraceRecording("reaction tracking frame=%u fighter=%p recovery=%s",
 				frame, reinterpret_cast<const void*>(fighter), RecoveryName(state.recovery));
-			if (afterKO)
-				TrainingTeamEditor::TraceRecording("incoming after KO frame=%u outgoing=%p entrant=%p",
-					frame, reinterpret_cast<const void*>(outgoing), reinterpret_cast<const void*>(fighter));
-			return;
+			if (!afterKO)
+				return;
+			TrainingTeamEditor::TraceRecording("incoming after KO frame=%u outgoing=%p entrant=%p recovery_flags=%08X",
+				frame, reinterpret_cast<const void*>(outgoing), reinterpret_cast<const void*>(fighter), recoveryFlags);
 		}
 
-		state.trackingIncoming = state.trackingIncoming && incomingLocked && DummyOnIncoming.slot;
+		// The entry animation continues after its initial restrictions clear.
+		state.trackingIncoming = state.trackingIncoming && DummyOnIncoming.slot && entering
+			&& (recoveryFlags & IncomingInitialRestrictions);
 		const auto previous = state.recovery;
 		const auto recovery = state.trackingIncoming ? DummyRecovery::Incoming
 			: ReadDummyRecovery(fighter, previous, DummyOnWakeup.slot != 0);
@@ -4669,14 +4676,27 @@ namespace
 		if (newFrame)
 			state.lastInput = nullptr;
 
+		if (newFrame && state.incomingPlaybackAction)
+		{
+			const auto fighterAction = *reinterpret_cast<const uint32_t*>(fighter + FighterActionOffset);
+			if (fighterAction != *state.incomingPlaybackAction || !entering)
+			{
+				TrainingTeamEditor::TraceRecording(
+					"incoming action observed frame=%u action=%u from=%u airborne=%d entering=%d recovery=%s",
+					frame, fighterAction, *state.incomingPlaybackAction, (actionFlags & FighterAirborne) != 0,
+					entering, RecoveryName(recovery));
+				state.incomingPlaybackAction.reset();
+			}
+		}
+
 		state.recovery = recovery;
 		if (recovery != previous)
 		{
 			const auto timer = *reinterpret_cast<const uint32_t*>(fighter + RecoveryTimerOffset);
 			const auto hitFlags = *reinterpret_cast<const uint32_t*>(fighter + HitStateFlagsOffset);
 			TrainingTeamEditor::TraceRecording(
-				"p2 recovery frame=%u from=%s to=%s timer=%u hit_flags=%08X action_flags=%08X ground=%.2f block=%.2f air=%.2f",
-				frame, RecoveryName(previous), RecoveryName(recovery), timer, hitFlags, actionFlags,
+				"p2 recovery frame=%u from=%s to=%s timer=%u hit_flags=%08X action_flags=%08X recovery_flags=%08X ground=%.2f block=%.2f air=%.2f",
+				frame, RecoveryName(previous), RecoveryName(recovery), timer, hitFlags, actionFlags, recoveryFlags,
 				*reinterpret_cast<const float*>(fighter + GroundHitstunOffset),
 				*reinterpret_cast<const float*>(fighter + BlockstunOffset),
 				*reinterpret_cast<const float*>(fighter + AirHitstunOffset));
@@ -4728,9 +4748,18 @@ namespace
 			return;
 		}
 		if (state.playbackFrame == 0)
+		{
 			TrainingTeamEditor::TraceRecording(
 				"reaction playback started event=%s slot=%d frame=%u elapsed=%u length=%d",
 				RecoveryName(state.event), configured.slot, frame, frame - state.recoveryFrame, recording.length);
+			if (state.event == DummyRecovery::Incoming)
+			{
+				state.incomingPlaybackAction = *reinterpret_cast<const uint32_t*>(fighter + FighterActionOffset);
+				TrainingTeamEditor::TraceRecording(
+					"incoming playback context frame=%u action=%u airborne=%d entering=%d",
+					frame, *state.incomingPlaybackAction, (actionFlags & FighterAirborne) != 0, entering);
+			}
+		}
 		state.lastInput = recording.frames[state.playbackFrame++];
 		ApplyRecordingFrame(p2Input, state.lastInput, playbackP2Buttons);
 	}
