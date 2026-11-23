@@ -1,8 +1,10 @@
 #pragma once
 #include <Windows.h>
 #include <TlHelp32.h>
+#include <array>
 #include <vector>
 #include <list>
+#include <mutex>
 #include <string>
 #include <tchar.h>
 #include "umvc3_sMvc3Main.h"
@@ -195,6 +197,45 @@ inline int recordedLength5 = 0;
 inline int recordedLength5P1 = 0;
 inline int recordedLength5P2 = 0;
 inline int RecordingSlot = 1;
+inline constexpr int NoDummyMove = -1;
+inline constexpr int CustomDummyMove = -2;
+inline constexpr int DummyMoveGridSide = 6;
+inline constexpr size_t DummyInputCapacity = 32;
+struct DummyReaction
+{
+	int slot = 0;
+	int delay = 0;
+	int move = NoDummyMove;
+	std::array<char, DummyInputCapacity> customInput{};
+	std::array<char, DummyInputCapacity> customDraft{};
+
+	bool IsConfigured() const { return slot > 0 || move != NoDummyMove; }
+	bool operator==(const DummyReaction& other) const
+	{
+		return slot == other.slot && delay == other.delay && move == other.move
+			&& (move != CustomDummyMove || customInput == other.customInput);
+	}
+};
+inline constexpr int MaxDummyReactionDelay = 120;
+inline DummyReaction DummyOnHit;
+inline DummyReaction DummyOnBlock;
+inline DummyReaction DummyOnWakeup;
+inline DummyReaction DummyOnIncoming;
+inline std::mutex RecordingMutex;
+bool HasDummyRecording(int slot);
+const char* DummyMoveLabel(int move);
+bool IsDummyMoveValid(const DummyReaction& reaction);
+bool IsDummyMoveNotationValid(const char* notation);
+bool StartDummyControllerRecording();
+bool IsDummyControllerRecording();
+void StopDummyControllerRecording();
+void SetDummyCaptureGameFocus(bool focused);
+void FinishManualRecording(int p1Index, int& p1Length, int p2Index, int& p2Length);
+bool HasDummyControllerInputHook();
+inline constexpr uintptr_t DummyFightInputCall = 0x14002e149;
+bool IsDummyControllerInputCallSupported();
+void SetDummyControllerInputHookInstalled();
+uint32_t ConvertDummyFightInput(int player, uint32_t buttons, int alternateControls);
 #define ReplayLength (60*120)
 #define ReplayBufferSize 550
 inline uint8_t replayBuffer[ReplayLength][ReplayBufferSize];

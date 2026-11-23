@@ -35,7 +35,7 @@ When MVC3 starts, the mod checks GitHub Releases in the background. If you accep
 
 While the mod menu has focus, it captures XInput so controller navigation does not affect the game. Release the controls after closing the menu to resume play.
 
-The mod writes its log to `logs/UMVC3TrainingToolsInt-Teams.log` inside the game's folder. On startup it moves the log from older versions into `logs/`.
+Inside the game's folder, `logs/UMVC3TrainingToolsInt-Teams.log` contains team editor and Quick Training events. `logs/UMVC3TrainingToolsInt-Recording.log` contains recording, controller input, playback, and dummy reaction events. On startup the mod moves the legacy Teams log into `logs/`.
 
 The installer includes Ultimate ASI Loader x64 for installations without `dinput8.dll`. When it updates mod files, it backs up the originals in `UMVC3TrainingToolsInt-Backups`.
 
@@ -63,7 +63,7 @@ Al iniciar MVC3, el mod consulta GitHub Releases en segundo plano. Al aceptar un
 
 Mientras el menú del mod tiene el foco, captura la entrada XInput del mando. Al cerrar el menú, suelta los controles para volver a jugar.
 
-El mod guarda su registro en `logs/UMVC3TrainingToolsInt-Teams.log`, dentro de la carpeta del juego. Al iniciar, traslada el registro de las versiones anteriores a `logs/`.
+Dentro de la carpeta del juego, `logs/UMVC3TrainingToolsInt-Teams.log` recoge los eventos del editor de equipos y de Quick Training. `logs/UMVC3TrainingToolsInt-Recording.log` recoge los eventos de grabación, mandos, reproducción y reacciones del dummy. Al iniciar, el mod traslada el registro antiguo de equipos a `logs/`.
 
 Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busca UMVC3 en las bibliotecas de Steam. Si hace falta, usa **Examinar** para seleccionar `umvc3.exe`. Puedes cambiar el idioma del instalador entre español e inglés. Pulsa **Instalar** y luego **Jugar** para abrir el juego. Desde el menú principal, **F4** abre Quick Training.
 

@@ -1,5 +1,6 @@
 #include "../pch.h"
 #include "TrainingPad.h"
+#include "TrainingTeamEditor.h"
 #include "Localizer.h"
 #include "../gui/imgui/imgui.h"
 
@@ -69,6 +70,7 @@ namespace
 	{
 		DWORD packetOffset{};
 		bool masked{};
+		TrainingPad::InputCounts counts;
 	};
 
 	std::array<Controller, XUSER_MAX_COUNT> controllers{};
@@ -121,7 +123,12 @@ namespace
 		if (window && result == ERROR_SUCCESS && index < gameInput.size())
 		{
 			const std::lock_guard lock(gameInputMutex);
-			FilterGameInput(gameInput[index], *state, GetForegroundWindow() == window);
+			auto& input = gameInput[index];
+			const bool active = !IsNeutral(state->Gamepad);
+			FilterGameInput(input, *state, GetForegroundWindow() == window);
+			++input.counts.polls;
+			input.counts.active += active;
+			input.counts.suppressed += active && input.masked;
 		}
 		return result;
 	}
@@ -185,6 +192,8 @@ namespace
 
 		gameGetState.store(reinterpret_cast<GetState>(current));
 		gameStateHooked = ReplaceGameStateImport(current, reinterpret_cast<void*>(GameGetState));
+		if (gameStateHooked)
+			TrainingTeamEditor::TraceRecording("XInput game polling hook installed");
 	}
 
 	const Button* FindButton(DWORD mask)
@@ -232,10 +241,21 @@ namespace
 	}
 }
 
+std::array<TrainingPad::InputCounts, XUSER_MAX_COUNT> TrainingPad::ReadInputCounts()
+{
+	const std::lock_guard lock(gameInputMutex);
+	std::array<InputCounts, XUSER_MAX_COUNT> counts{};
+	for (size_t index = 0; index < counts.size(); ++index)
+		counts[index] = gameInput[index].counts;
+	return counts;
+}
+
 void TrainingPad::Initialize(HMODULE mod, HWND window)
 {
 	menuWindow.store(window);
 	gameStateImport = FindGameStateImport();
+	if (!gameStateImport)
+		TrainingTeamEditor::TraceRecording("XInput game polling hook unavailable: import not found");
 	HookGameState();
 
 	wchar_t modulePath[MAX_PATH]{};
@@ -303,11 +323,15 @@ void TrainingPad::Poll()
 		XINPUT_STATE state{};
 		if (getState(index, &state) != ERROR_SUCCESS)
 		{
+			if (controller.connected)
+				TrainingTeamEditor::TraceRecording("XInput controller disconnected index=%lu", index);
 			controller = {};
 			controller.retryAt = now + 1000;
 			continue;
 		}
 
+		if (!controller.connected)
+			TrainingTeamEditor::TraceRecording("XInput controller connected index=%lu", index);
 		controller.pad = state.Gamepad;
 		DWORD held = controller.pad.wButtons;
 		if (controller.pad.bLeftTrigger >= TriggerThreshold)
