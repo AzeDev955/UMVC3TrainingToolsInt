@@ -201,6 +201,7 @@ REC_REACTIONS,Dummy reactions,Reacciones del dummy
 REC_REACTION_HIT,On Hit,Tras recibir un golpe
 REC_REACTION_BLOCK,On Block,Tras bloquear
 REC_REACTION_WAKEUP,On Wakeup,Al levantarse
+REC_REACTION_INCOMING,On Incoming,Al entrar tras KO
 REC_REACTION_OFF,Off,Desactivado
 REC_REACTION_DELAY,Delay,Retardo
 REC_REACTION_EMPTY,There is no P2 recording in this slot.,Esta ranura no tiene una grabación de J2.

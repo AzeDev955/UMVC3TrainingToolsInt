@@ -18,6 +18,8 @@
 #include "umvc3utils.h"
 #include "TrainingTeamEditor.h"
 #include "TrainingPad.h"
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <optional>
 
@@ -4470,7 +4472,7 @@ namespace
 		++trace.samples;
 	}
 
-	enum class DummyRecovery { None, Hit, Block, Wakeup };
+	enum class DummyRecovery { None, Hit, Block, Wakeup, Incoming };
 	enum class FighterRecoveryTimer : uint32_t { GroundHit = 0, AirHit = 2 };
 	constexpr uintptr_t RecoveryTimerOffset = 0x414c;
 	constexpr uintptr_t GroundHitstunOffset = 0x4154;
@@ -4485,11 +4487,13 @@ namespace
 	constexpr uint32_t AirHitRecoverySuppressed = 0x800000;
 	constexpr uint32_t AirHitMotionSuppressed = 0x8000;
 	constexpr uint32_t WakeupInProgress = 0x80000;
+	constexpr uint32_t IncomingInProgress = 0x8000000;
 
 	struct DummyReactionState
 	{
 		uintptr_t action = 0;
 		uintptr_t fighter = 0;
+		bool trackingIncoming = false;
 		uint32_t frame = 0;
 		DummyRecovery recovery = DummyRecovery::None;
 		DummyRecovery event = DummyRecovery::None;
@@ -4508,6 +4512,7 @@ namespace
 		case DummyRecovery::Hit: return "hit";
 		case DummyRecovery::Block: return "block";
 		case DummyRecovery::Wakeup: return "wakeup";
+		case DummyRecovery::Incoming: return "incoming";
 		default: return "none";
 		}
 	}
@@ -4519,6 +4524,7 @@ namespace
 		case DummyRecovery::Hit: return DummyOnHit;
 		case DummyRecovery::Block: return DummyOnBlock;
 		case DummyRecovery::Wakeup: return DummyOnWakeup;
+		case DummyRecovery::Incoming: return DummyOnIncoming;
 		default:
 			static constexpr DummyReaction disabled{};
 			return disabled;
@@ -4533,20 +4539,24 @@ namespace
 				RecoveryName(state.event), state.reaction.slot, frame, state.playbackFrame, reason);
 	}
 
-	uintptr_t GetActiveDummy()
+	std::array<uintptr_t, 3> GetDummyTeam()
 	{
 		const auto characters = *reinterpret_cast<const uintptr_t*>(_addr(0x140d44a70));
 		const auto chain = characters ? *reinterpret_cast<const uintptr_t*>(characters + 0x328) : 0;
 		const auto next = chain ? *reinterpret_cast<const uintptr_t*>(chain + 0x10) : 0;
 		if (!next)
-			return 0;
+			return {};
 
 		const auto second = *reinterpret_cast<const uintptr_t*>(next + 0x8);
-		const uintptr_t fighters[] = {
+		return {
 			*reinterpret_cast<const uintptr_t*>(chain + 0x8),
 			second,
 			second ? *reinterpret_cast<const uintptr_t*>(second + 0x18) : 0,
 		};
+	}
+
+	uintptr_t GetActiveDummy(const std::array<uintptr_t, 3>& fighters)
+	{
 		for (const auto fighter : fighters)
 		{
 			if (!fighter)
@@ -4586,7 +4596,8 @@ namespace
 	void ApplyDummyReaction(uint8_t* p2Input, bool manualP2PlaybackOrRecording)
 	{
 		auto& state = dummyReaction;
-		if (manualP2PlaybackOrRecording || (!DummyOnHit.slot && !DummyOnBlock.slot && !DummyOnWakeup.slot))
+		if (manualP2PlaybackOrRecording
+			|| (!DummyOnHit.slot && !DummyOnBlock.slot && !DummyOnWakeup.slot && !DummyOnIncoming.slot))
 		{
 			TraceDummyEnd(manualP2PlaybackOrRecording ? "manual_p2" : "disabled", state.frame);
 			state = {};
@@ -4594,32 +4605,65 @@ namespace
 		}
 
 		const auto action = TrainingTeamEditor::GetFightingAction();
-		const auto fighter = action ? GetActiveDummy() : 0;
-		if (!fighter || *reinterpret_cast<const float*>(fighter + 0x1550) <= 0.0f)
+		if (!action)
 		{
-			TraceDummyEnd(!action ? "training_inactive" : "p2_unavailable", state.frame);
+			TraceDummyEnd("training_inactive", state.frame);
 			state = {};
 			return;
 		}
 
 		// The input hook can be used without advancing the battle frame.
 		const auto frame = *reinterpret_cast<const uint32_t*>(action + 0xf0);
-		const bool contextChanged = action != state.action || fighter != state.fighter || frame < state.frame;
-		const auto previous = contextChanged ? DummyRecovery::None : state.recovery;
-		const auto recovery = ReadDummyRecovery(fighter, previous, DummyOnWakeup.slot != 0);
-		if (contextChanged)
+		if (action != state.action || frame < state.frame)
 		{
 			TraceDummyEnd("combat_context_changed", frame);
-			TrainingTeamEditor::TraceRecording("reaction tracking frame=%u fighter=%p recovery=%s",
-				frame, reinterpret_cast<const void*>(fighter), RecoveryName(recovery));
+			state = {};
+			state.action = action;
+		}
+
+		const auto team = GetDummyTeam();
+		const auto fighter = GetActiveDummy(team);
+		if (!fighter || *reinterpret_cast<const float*>(fighter + 0x1550) <= 0.0f)
+		{
+			// Keep the outgoing fighter until the replacement becomes active.
+			if (fighter && DummyOnIncoming.slot && CheckIfDead(fighter))
+				state.fighter = fighter;
+			TraceDummyEnd("p2_unavailable", frame);
+			state.frame = frame;
+			state.recovery = DummyRecovery::None;
+			state.event = DummyRecovery::None;
+			state.lastInput = nullptr;
+			state.trackingIncoming = false;
+			return;
+		}
+
+		const auto actionFlags = *reinterpret_cast<const uint32_t*>(fighter + FighterActionFlagsOffset);
+		const bool incomingLocked = (actionFlags & IncomingInProgress) != 0;
+		if (fighter != state.fighter)
+		{
+			const auto outgoing = state.fighter;
+			const bool afterKO = DummyOnIncoming.slot && incomingLocked && outgoing
+				&& std::find(team.begin(), team.end(), outgoing) != team.end() && CheckIfDead(outgoing);
+			TraceDummyEnd("combat_context_changed", frame);
 			state = {};
 			state.action = action;
 			state.fighter = fighter;
 			state.frame = frame;
-			state.recovery = recovery;
+			state.trackingIncoming = afterKO;
+			state.recovery = afterKO ? DummyRecovery::Incoming
+				: ReadDummyRecovery(fighter, DummyRecovery::None, DummyOnWakeup.slot != 0);
+			TrainingTeamEditor::TraceRecording("reaction tracking frame=%u fighter=%p recovery=%s",
+				frame, reinterpret_cast<const void*>(fighter), RecoveryName(state.recovery));
+			if (afterKO)
+				TrainingTeamEditor::TraceRecording("incoming after KO frame=%u outgoing=%p entrant=%p",
+					frame, reinterpret_cast<const void*>(outgoing), reinterpret_cast<const void*>(fighter));
 			return;
 		}
 
+		state.trackingIncoming = state.trackingIncoming && incomingLocked && DummyOnIncoming.slot;
+		const auto previous = state.recovery;
+		const auto recovery = state.trackingIncoming ? DummyRecovery::Incoming
+			: ReadDummyRecovery(fighter, previous, DummyOnWakeup.slot != 0);
 		const bool newFrame = frame != state.frame;
 		state.frame = frame;
 		if (newFrame)
@@ -4630,7 +4674,6 @@ namespace
 		{
 			const auto timer = *reinterpret_cast<const uint32_t*>(fighter + RecoveryTimerOffset);
 			const auto hitFlags = *reinterpret_cast<const uint32_t*>(fighter + HitStateFlagsOffset);
-			const auto actionFlags = *reinterpret_cast<const uint32_t*>(fighter + FighterActionFlagsOffset);
 			TrainingTeamEditor::TraceRecording(
 				"p2 recovery frame=%u from=%s to=%s timer=%u hit_flags=%08X action_flags=%08X ground=%.2f block=%.2f air=%.2f",
 				frame, RecoveryName(previous), RecoveryName(recovery), timer, hitFlags, actionFlags,

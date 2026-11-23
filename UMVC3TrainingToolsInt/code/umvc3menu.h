@@ -205,6 +205,7 @@ inline constexpr int MaxDummyReactionDelay = 120;
 inline DummyReaction DummyOnHit;
 inline DummyReaction DummyOnBlock;
 inline DummyReaction DummyOnWakeup;
+inline DummyReaction DummyOnIncoming;
 inline std::mutex RecordingMutex;
 bool HasDummyRecording(int slot);
 bool StartDummyControllerRecording();
