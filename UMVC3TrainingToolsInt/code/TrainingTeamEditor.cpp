@@ -1111,6 +1111,11 @@ void TrainingTeamEditor::TraceQuickSelection(int p1Phase, int p2Phase, int mode)
 	Log(0, "quick training: selector phases P1=%d P2=%d mode=%d", p1Phase, p2Phase, mode);
 }
 
+void TrainingTeamEditor::TraceWindowRenderer(const char* operation, HRESULT result)
+{
+	Log(0, "tool window: %s (HRESULT=0x%08lX)", operation, static_cast<unsigned long>(result));
+}
+
 void TrainingTeamEditor::TraceRecording(const char* format, ...)
 {
 	AcquireSRWLockExclusive(&recordingLogLock);

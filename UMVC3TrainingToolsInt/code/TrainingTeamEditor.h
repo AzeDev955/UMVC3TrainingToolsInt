@@ -22,6 +22,7 @@ namespace TrainingTeamEditor
 	void TraceQuickSelection(int p1Phase, int p2Phase, int mode);
 	void TraceRecording(const char* format, ...);
 	void FlushRecordingLog();
+	void TraceWindowRenderer(const char* operation, HRESULT result);
 	bool PrepareQuickMatch(const TrainingShortcut::TeamPicks& picks);
 	bool IsTrainingPlayable();
 	uintptr_t GetFightingAction();

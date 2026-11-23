@@ -116,28 +116,49 @@ static void CleanupD3DDevice() {
 	}
 }
 
-static void ResizeD3D9Device(int width, int height)
+static void ReportToolRenderResult(const char* operation, HRESULT result)
 {
-	if (!D3ddev)
-		return;
-
-	//Gotta update the back buffer size with the new dimensions.
-	d3dpp.BackBufferWidth = width;
-	d3dpp.BackBufferHeight = height;
-
-	//Other Released Resources Here.
-	ImGui_ImplDX9_InvalidateDeviceObjects();
-
-	// Direct3D may clear the back buffer dimensions in the structure passed to Reset.
-	auto deviceParameters = d3dpp;
-	if (FAILED(D3ddev->Reset(&deviceParameters)))
+	static HRESULT lastFailure = D3D_OK;
+	if (FAILED(result))
 	{
-		OutputDebugStringA("D3D9Device reset has failed!\n");
-		return;
+		if (result != lastFailure)
+			TrainingTeamEditor::TraceWindowRenderer(operation, result);
+		lastFailure = result;
+	}
+	else if (FAILED(lastFailure))
+	{
+		TrainingTeamEditor::TraceWindowRenderer("rendering recovered", result);
+		lastFailure = D3D_OK;
+	}
+}
+
+static bool PrepareToolRenderer(UINT width, UINT height)
+{
+	const HRESULT status = D3ddev->TestCooperativeLevel();
+	if (FAILED(status) && status != D3DERR_DEVICENOTRESET)
+	{
+		ReportToolRenderResult("device unavailable", status);
+		return false;
+	}
+	if (status != D3DERR_DEVICENOTRESET && width == d3dpp.BackBufferWidth && height == d3dpp.BackBufferHeight)
+		return true;
+
+	ImGui_ImplDX9_InvalidateDeviceObjects();
+	auto deviceParameters = d3dpp;
+	deviceParameters.BackBufferWidth = width;
+	deviceParameters.BackBufferHeight = height;
+	const HRESULT reset = D3ddev->Reset(&deviceParameters);
+	if (FAILED(reset))
+	{
+		ReportToolRenderResult("device reset failed", reset);
+		return false;
 	}
 
-	//Other Resources Rebuild here.
+	// Reset can overwrite the parameters it receives. Keep the dimensions we requested.
+	d3dpp.BackBufferWidth = width;
+	d3dpp.BackBufferHeight = height;
 	ImGui_ImplDX9_CreateDeviceObjects();
+	return true;
 }
 
 //Checks for valid version of the game.
@@ -5220,10 +5241,13 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		GetClientRect(hWnd, &clientRect);
 		const int width = clientRect.right - clientRect.left;
 		const int height = clientRect.bottom - clientRect.top;
+		if (width <= 0 || height <= 0 || IsIconic(hWnd)
+			|| !PrepareToolRenderer(static_cast<UINT>(width), static_cast<UINT>(height)))
+		{
+			Sleep(16);
+			continue;
+		}
 		const ImVec2 wndSize(static_cast<float>(width), static_cast<float>(height));
-		if (width > 0 && height > 0
-			&& (static_cast<UINT>(width) != d3dpp.BackBufferWidth || static_cast<UINT>(height) != d3dpp.BackBufferHeight))
-			ResizeD3D9Device(width, height);
 
 		const bool toolFocused = GetForegroundWindow() == hWnd;
 		// ImGui can close a dropdown with B during NewFrame.
@@ -5347,18 +5371,21 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			TrainingShortcut::DispatchTraining();
 			continue;
 		}
-		D3ddev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
+		HRESULT renderResult = D3ddev->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
 			D3DCOLOR_RGBA(45, 45, 48, 255), 1.0f, 0);
-
-
-		if (D3ddev->BeginScene() >= 0) {
+		if (SUCCEEDED(renderResult))
+			renderResult = D3ddev->BeginScene();
+		if (SUCCEEDED(renderResult))
+		{
 			ImGui::Render();
 			ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
-			D3ddev->EndScene();
+			renderResult = D3ddev->EndScene();
 		}
-
-		if (FAILED(D3ddev->Present(NULL, NULL, NULL, NULL)))
-			Sleep(8);
+		if (SUCCEEDED(renderResult))
+			renderResult = D3ddev->Present(NULL, NULL, NULL, NULL);
+		ReportToolRenderResult("frame presentation failed", renderResult);
+		if (FAILED(renderResult))
+			Sleep(16);
 	}
 
 	TrainingPad::Shutdown();
