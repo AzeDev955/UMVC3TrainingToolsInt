@@ -209,7 +209,9 @@ REC_REACTION_RECORDINGS,Recordings,Grabaciones
 REC_REACTION_MOVES,Inputs,Movimientos
 REC_REACTION_CUSTOM,Custom,Personalizado
 REC_REACTION_NOTATION,Input,Secuencia
-REC_REACTION_NOTATION_HELP,Use directions 1–9 and buttons L M H S A1 A2. Join simultaneous buttons with +.,Usa direcciones del 1 al 9 y botones L M H S A1 A2. Une los botones simultáneos con +.
+REC_REACTION_APPLY,Apply,Aplicar
+REC_REACTION_ACTIVE_INPUT,Active input %s,Secuencia activa %s
+REC_REACTION_NOTATION_HELP,Use directions 1–9 and buttons L M H S A1 A2. Join simultaneous buttons with + and apply the input.,Usa direcciones del 1 al 9 y botones L M H S A1 A2. Une los botones simultáneos con + y pulsa Aplicar.
 REC_REACTION_DELAY,Delay,Retardo
 REC_REACTION_EMPTY,There is no P2 recording in this slot.,Esta ranura no tiene una grabación de J2.
 REC_REACTION_HELP,Choose a recording or an input sequence. At 0 f it starts as soon as P2 recovers.,Elige una grabación o una secuencia. Con 0 f empieza en cuanto se recupera J2.

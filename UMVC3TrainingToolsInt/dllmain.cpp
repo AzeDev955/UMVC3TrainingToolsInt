@@ -3263,19 +3263,31 @@ static void DrawDummyReaction(const char* label, DummyReaction& reaction)
 		"%d f", ImGuiSliderFlags_AlwaysClamp);
 	const bool delayEdited = ImGui::IsItemDeactivatedAfterEdit();
 	ImGui::EndDisabled();
-	bool customEdited = false;
+	bool customApplied = false;
 	if (reaction.move == CustomDummyMove)
 	{
 		ImGui::SetNextItemWidth(145.0f);
-		ImGui::InputTextWithHint(UiLabel("REC_REACTION_NOTATION").c_str(), "63214H+L",
-			reaction.customInput.data(), reaction.customInput.size(), ImGuiInputTextFlags_CharsUppercase);
-		customEdited = ImGui::IsItemDeactivatedAfterEdit();
-		if (!IsDummyMoveValid(reaction))
+		const bool enter = ImGui::InputTextWithHint(UiLabel("REC_REACTION_NOTATION").c_str(), "63214H+L",
+			reaction.customDraft.data(), reaction.customDraft.size(),
+			ImGuiInputTextFlags_CharsUppercase | ImGuiInputTextFlags_EnterReturnsTrue);
+		const bool draftValid = IsDummyMoveNotationValid(reaction.customDraft.data());
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!draftValid);
+		const bool apply = ImGui::Button(UiText("REC_REACTION_APPLY"));
+		ImGui::EndDisabled();
+		if (draftValid && (apply || enter))
+		{
+			reaction.customInput = reaction.customDraft;
+			customApplied = true;
+		}
+		if (!draftValid)
 			ImGui::TextWrapped("%s", UiText("REC_REACTION_NOTATION_HELP"));
+		if (reaction.customDraft != reaction.customInput && reaction.customInput[0])
+			ImGui::TextDisabled(UiText("REC_REACTION_ACTIVE_INPUT"), reaction.customInput.data());
 	}
 	if (reaction.slot && !HasDummyRecording(reaction.slot))
 		ImGui::TextDisabled("%s", UiText("REC_REACTION_EMPTY"));
-	if (reaction.slot != previous.slot || reaction.move != previous.move || delayEdited || customEdited)
+	if (reaction.slot != previous.slot || reaction.move != previous.move || delayEdited || customApplied)
 		TrainingTeamEditor::TraceRecording("reaction configured event=%s slot=%d delay=%d move=%s available=%d",
 			label, reaction.slot, reaction.delay,
 			reaction.move == CustomDummyMove ? reaction.customInput.data() : DummyMoveLabel(reaction.move),

@@ -4329,6 +4329,7 @@ namespace
 	constexpr uint32_t InputSpecial = 0x80;
 	constexpr uint32_t InputAssist1 = 0x100;
 	constexpr uint32_t InputAssist2 = 0x200;
+	constexpr uint32_t MoveButtonMask = InputLight | InputMedium | InputHeavy | InputSpecial | InputAssist1 | InputAssist2;
 	constexpr uint32_t FighterFacingLeft = 0x200000;
 	constexpr int MoveStepFrames = 2;
 	constexpr size_t MaxMoveDirections = 12;
@@ -4363,10 +4364,17 @@ namespace
 
 	std::optional<DummyMoveSequence> ParseDummyMove(std::string_view notation)
 	{
-		const auto start = notation.find_first_not_of(" \t");
-		if (start == std::string_view::npos)
-			return std::nullopt;
-		notation = notation.substr(start, notation.find_last_not_of(" \t") - start + 1);
+		std::array<char, DummyInputCapacity> compact{};
+		size_t size = 0;
+		for (const char ch : notation)
+		{
+			if (ch == ' ' || ch == '\t')
+				continue;
+			if (size == compact.size())
+				return std::nullopt;
+			compact[size++] = ch;
+		}
+		notation = std::string_view(compact.data(), size);
 
 		constexpr uint32_t directions[] = {
 			InputDown | InputLeft, InputDown, InputDown | InputRight,
@@ -4613,6 +4621,15 @@ namespace
 	constexpr uint32_t IncomingInProgress = 0x8000000;
 	constexpr uint32_t IncomingInitialRestrictions = 0xa0000;
 	constexpr uint32_t FighterAirborne = 0x20;
+	constexpr uintptr_t P2MeterOffset = 0x610 + 0x78;
+	constexpr uint32_t ChordObservationFrames = 8;
+
+	struct DummyChordObservation
+	{
+		uint32_t frame;
+		uint32_t action;
+		float meter;
+	};
 
 	struct DummyReactionState
 	{
@@ -4629,6 +4646,8 @@ namespace
 		const uint8_t* lastInput = nullptr;
 		std::optional<uint32_t> lastMoveInput;
 		std::optional<uint32_t> incomingPlaybackAction;
+		std::optional<DummyChordObservation> chordObservation;
+		bool chordSent = false;
 	};
 
 	DummyReactionState dummyReaction;
@@ -4815,6 +4834,19 @@ namespace
 				state.incomingPlaybackAction.reset();
 			}
 		}
+		if (newFrame && state.chordObservation)
+		{
+			const auto first = *state.chordObservation;
+			const auto fighterAction = *reinterpret_cast<const uint32_t*>(fighter + FighterActionOffset);
+			const auto meter = *reinterpret_cast<const float*>(action + P2MeterOffset);
+			if (fighterAction != first.action || meter < first.meter || frame - first.frame >= ChordObservationFrames)
+			{
+				TrainingTeamEditor::TraceRecording(
+					"p2 chord result frame=%u elapsed=%u action_before=%u action_now=%u meter_before=%.0f meter_now=%.0f",
+					frame, frame - first.frame, first.action, fighterAction, first.meter, meter);
+				state.chordObservation.reset();
+			}
+		}
 
 		state.recovery = recovery;
 		if (recovery != previous)
@@ -4843,6 +4875,7 @@ namespace
 			state.reaction = ReactionSettings(state.event);
 			const auto move = ParseDummyMove(ReactionMoveInput(state.reaction));
 			state.moveSequence = move.value_or(DummyMoveSequence{});
+			state.chordSent = false;
 			state.recoveryFrame = frame;
 			state.playbackFrame = 0;
 			TrainingTeamEditor::TraceRecording("reaction scheduled event=%s slot=%d recovery_frame=%u delay=%d move=%s",
@@ -4903,6 +4936,16 @@ namespace
 		{
 			state.lastMoveInput = state.moveSequence.frames[state.playbackFrame++];
 			presetP2Buttons = state.lastMoveInput;
+			const auto buttons = *state.lastMoveInput & MoveButtonMask;
+			if (!state.chordSent && (buttons & (buttons - 1)))
+			{
+				state.chordSent = true;
+				const auto fighterAction = *reinterpret_cast<const uint32_t*>(fighter + FighterActionOffset);
+				const auto meter = *reinterpret_cast<const float*>(action + P2MeterOffset);
+				state.chordObservation = DummyChordObservation{ frame, fighterAction, meter };
+				TrainingTeamEditor::TraceRecording("p2 chord frame=%u move=%s buttons=%03X action=%u meter=%.0f",
+					frame, ReactionMoveInput(state.reaction), buttons, fighterAction, meter);
+			}
 			return;
 		}
 		state.lastInput = DummyRecordings[configured.slot - 1].frames[state.playbackFrame++];
@@ -4928,6 +4971,11 @@ const char* DummyMoveLabel(int move)
 bool IsDummyMoveValid(const DummyReaction& reaction)
 {
 	return ParseDummyMove(ReactionMoveInput(reaction)).has_value();
+}
+
+bool IsDummyMoveNotationValid(const char* notation)
+{
+	return ParseDummyMove(notation).has_value();
 }
 
 bool HasDummyControllerInputHook()
