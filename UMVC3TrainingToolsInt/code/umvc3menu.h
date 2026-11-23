@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include <TlHelp32.h>
+#include <array>
 #include <vector>
 #include <list>
 #include <mutex>
@@ -196,10 +197,22 @@ inline int recordedLength5 = 0;
 inline int recordedLength5P1 = 0;
 inline int recordedLength5P2 = 0;
 inline int RecordingSlot = 1;
+inline constexpr int NoDummyMove = -1;
+inline constexpr int CustomDummyMove = -2;
+inline constexpr int DummyMoveGridSide = 6;
 struct DummyReaction
 {
 	int slot = 0;
 	int delay = 0;
+	int move = NoDummyMove;
+	std::array<char, 32> customInput{};
+
+	bool IsConfigured() const { return slot > 0 || move != NoDummyMove; }
+	bool operator==(const DummyReaction& other) const
+	{
+		return slot == other.slot && delay == other.delay && move == other.move
+			&& (move != CustomDummyMove || customInput == other.customInput);
+	}
 };
 inline constexpr int MaxDummyReactionDelay = 120;
 inline DummyReaction DummyOnHit;
@@ -208,6 +221,8 @@ inline DummyReaction DummyOnWakeup;
 inline DummyReaction DummyOnIncoming;
 inline std::mutex RecordingMutex;
 bool HasDummyRecording(int slot);
+const char* DummyMoveLabel(int move);
+bool IsDummyMoveValid(const DummyReaction& reaction);
 bool StartDummyControllerRecording();
 bool IsDummyControllerRecording();
 void StopDummyControllerRecording();

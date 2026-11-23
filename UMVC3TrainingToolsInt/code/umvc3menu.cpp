@@ -22,6 +22,7 @@
 #include <array>
 #include <atomic>
 #include <optional>
+#include <string_view>
 
 
 //Gotta port these to safer internal commands.
@@ -4308,6 +4309,127 @@ namespace
 	std::optional<uint32_t> liveDummyButtons;
 	std::optional<uint32_t> playbackP1Buttons;
 	std::optional<uint32_t> playbackP2Buttons;
+	std::optional<uint32_t> presetP2Buttons;
+
+	constexpr const char* DummyMoveGrid[DummyMoveGridSide * DummyMoveGridSide] = {
+		"5L",   "5M",   "5H",   "5S",   "44",     "66",
+		"2L",   "2M",   "2H",   "2S",   "1",      "4",
+		"6L",   "6M",   "6H",   "6S",   "8",      "9",
+		"236L", "236M", "236H", "236S", "236L+M", "236M+H",
+		"214L", "214M", "214H", "214S", "214L+M", "214M+H",
+		"623L", "623M", "623H", "623S", "22L",    "22M",
+	};
+	constexpr uint32_t InputRight = 0x1;
+	constexpr uint32_t InputLeft = 0x2;
+	constexpr uint32_t InputUp = 0x4;
+	constexpr uint32_t InputDown = 0x8;
+	constexpr uint32_t InputLight = 0x10;
+	constexpr uint32_t InputMedium = 0x20;
+	constexpr uint32_t InputHeavy = 0x40;
+	constexpr uint32_t InputSpecial = 0x80;
+	constexpr uint32_t InputAssist1 = 0x100;
+	constexpr uint32_t InputAssist2 = 0x200;
+	constexpr uint32_t FighterFacingLeft = 0x200000;
+	constexpr int MoveStepFrames = 2;
+	constexpr size_t MaxMoveDirections = 12;
+
+	struct DummyMoveSequence
+	{
+		// A repeated direction needs a neutral step to register as a second press.
+		std::array<uint32_t, MaxMoveDirections * MoveStepFrames * 2 + 1> frames{};
+		int length = 0;
+	};
+
+	const char* ReactionMoveInput(const DummyReaction& reaction)
+	{
+		if (reaction.move == CustomDummyMove)
+			return reaction.customInput.data();
+		if (reaction.move >= 0 && reaction.move < static_cast<int>(std::size(DummyMoveGrid)))
+			return DummyMoveGrid[reaction.move];
+		return "";
+	}
+
+	uint32_t MoveButton(char button)
+	{
+		switch (button)
+		{
+		case 'L': case 'l': return InputLight;
+		case 'M': case 'm': return InputMedium;
+		case 'H': case 'h': return InputHeavy;
+		case 'S': case 's': return InputSpecial;
+		default: return 0;
+		}
+	}
+
+	std::optional<DummyMoveSequence> ParseDummyMove(std::string_view notation)
+	{
+		const auto start = notation.find_first_not_of(" \t");
+		if (start == std::string_view::npos)
+			return std::nullopt;
+		notation = notation.substr(start, notation.find_last_not_of(" \t") - start + 1);
+
+		constexpr uint32_t directions[] = {
+			InputDown | InputLeft, InputDown, InputDown | InputRight,
+			InputLeft, 0, InputRight,
+			InputUp | InputLeft, InputUp, InputUp | InputRight,
+		};
+		std::array<uint32_t, MaxMoveDirections> motion{};
+		size_t count = 0;
+		while (!notation.empty() && notation.front() >= '1' && notation.front() <= '9')
+		{
+			if (count == motion.size())
+				return std::nullopt;
+			motion[count++] = directions[notation.front() - '1'];
+			notation.remove_prefix(1);
+		}
+
+		uint32_t buttons = 0;
+		while (!notation.empty())
+		{
+			uint32_t button = MoveButton(notation.front());
+			if (notation.size() >= 2 && (notation.front() == 'A' || notation.front() == 'a'))
+			{
+				if (notation[1] == '1' || notation[1] == '2')
+				{
+					button = notation[1] == '1' ? InputAssist1 : InputAssist2;
+					notation.remove_prefix(1);
+				}
+			}
+			if (!button || (buttons & button))
+				return std::nullopt;
+			buttons |= button;
+			notation.remove_prefix(1);
+			if (notation.empty())
+				break;
+			if (notation.front() != '+' || notation.size() == 1)
+				return std::nullopt;
+			notation.remove_prefix(1);
+		}
+		if (!count && !buttons)
+			return std::nullopt;
+		if (!count)
+			count = 1;
+
+		DummyMoveSequence sequence;
+		for (size_t step = 0; step < count; ++step)
+		{
+			const auto direction = motion[step];
+			if (step && direction && direction == motion[step - 1])
+				sequence.length += MoveStepFrames;
+			const auto input = direction | (step + 1 == count ? buttons : 0);
+			for (int frame = 0; frame < MoveStepFrames; ++frame)
+				sequence.frames[sequence.length++] = input;
+		}
+		++sequence.length; // Release directions and buttons before handing control back.
+		return sequence;
+	}
+
+	uint32_t FaceDummyInput(uint32_t input, uint32_t fighterFlags)
+	{
+		if (!(fighterFlags & FighterFacingLeft))
+			return input;
+		return (input & ~(InputLeft | InputRight)) | ((input & InputRight) << 1) | ((input & InputLeft) >> 1);
+	}
 
 	int GetP1Controller()
 	{
@@ -4501,9 +4623,11 @@ namespace
 		DummyRecovery recovery = DummyRecovery::None;
 		DummyRecovery event = DummyRecovery::None;
 		DummyReaction reaction;
+		DummyMoveSequence moveSequence;
 		uint32_t recoveryFrame = 0;
 		int playbackFrame = 0;
 		const uint8_t* lastInput = nullptr;
+		std::optional<uint32_t> lastMoveInput;
 		std::optional<uint32_t> incomingPlaybackAction;
 	};
 
@@ -4600,8 +4724,8 @@ namespace
 	void ApplyDummyReaction(uint8_t* p2Input, bool manualP2PlaybackOrRecording)
 	{
 		auto& state = dummyReaction;
-		if (manualP2PlaybackOrRecording
-			|| (!DummyOnHit.slot && !DummyOnBlock.slot && !DummyOnWakeup.slot && !DummyOnIncoming.slot))
+		if (manualP2PlaybackOrRecording || (!DummyOnHit.IsConfigured() && !DummyOnBlock.IsConfigured()
+			&& !DummyOnWakeup.IsConfigured() && !DummyOnIncoming.IsConfigured()))
 		{
 			TraceDummyEnd(manualP2PlaybackOrRecording ? "manual_p2" : "disabled", state.frame);
 			state = {};
@@ -4630,7 +4754,7 @@ namespace
 		if (!fighter || *reinterpret_cast<const float*>(fighter + 0x1550) <= 0.0f)
 		{
 			// Keep the outgoing fighter until the replacement becomes active.
-			if (fighter && DummyOnIncoming.slot && CheckIfDead(fighter))
+			if (fighter && DummyOnIncoming.IsConfigured() && CheckIfDead(fighter))
 				state.fighter = fighter;
 			TraceDummyEnd("p2_unavailable", frame);
 			state.frame = frame;
@@ -4647,7 +4771,7 @@ namespace
 		if (fighter != state.fighter)
 		{
 			const auto outgoing = state.fighter;
-			const bool afterKO = DummyOnIncoming.slot && entering && outgoing
+			const bool afterKO = DummyOnIncoming.IsConfigured() && entering && outgoing
 				&& std::find(team.begin(), team.end(), outgoing) != team.end() && CheckIfDead(outgoing);
 			TraceDummyEnd("combat_context_changed", frame);
 			state = {};
@@ -4656,7 +4780,7 @@ namespace
 			state.frame = frame;
 			state.trackingIncoming = afterKO;
 			state.recovery = afterKO ? DummyRecovery::Incoming
-				: ReadDummyRecovery(fighter, DummyRecovery::None, DummyOnWakeup.slot != 0);
+				: ReadDummyRecovery(fighter, DummyRecovery::None, DummyOnWakeup.IsConfigured());
 			TrainingTeamEditor::TraceRecording("reaction tracking frame=%u fighter=%p recovery=%s",
 				frame, reinterpret_cast<const void*>(fighter), RecoveryName(state.recovery));
 			if (!afterKO)
@@ -4666,15 +4790,18 @@ namespace
 		}
 
 		// The entry animation continues after its initial restrictions clear.
-		state.trackingIncoming = state.trackingIncoming && DummyOnIncoming.slot && entering
+		state.trackingIncoming = state.trackingIncoming && DummyOnIncoming.IsConfigured() && entering
 			&& (recoveryFlags & IncomingInitialRestrictions);
 		const auto previous = state.recovery;
 		const auto recovery = state.trackingIncoming ? DummyRecovery::Incoming
-			: ReadDummyRecovery(fighter, previous, DummyOnWakeup.slot != 0);
+			: ReadDummyRecovery(fighter, previous, DummyOnWakeup.IsConfigured());
 		const bool newFrame = frame != state.frame;
 		state.frame = frame;
 		if (newFrame)
+		{
 			state.lastInput = nullptr;
+			state.lastMoveInput.reset();
+		}
 
 		if (newFrame && state.incomingPlaybackAction)
 		{
@@ -4706,6 +4833,7 @@ namespace
 			TraceDummyEnd("new_recovery", frame);
 			state.event = DummyRecovery::None;
 			state.lastInput = nullptr;
+			state.lastMoveInput.reset();
 			return;
 		}
 
@@ -4713,26 +4841,35 @@ namespace
 		{
 			state.event = previous;
 			state.reaction = ReactionSettings(state.event);
+			const auto move = ParseDummyMove(ReactionMoveInput(state.reaction));
+			state.moveSequence = move.value_or(DummyMoveSequence{});
 			state.recoveryFrame = frame;
 			state.playbackFrame = 0;
-			TrainingTeamEditor::TraceRecording("reaction scheduled event=%s slot=%d recovery_frame=%u delay=%d",
-				RecoveryName(state.event), state.reaction.slot, frame, state.reaction.delay);
+			TrainingTeamEditor::TraceRecording("reaction scheduled event=%s slot=%d recovery_frame=%u delay=%d move=%s",
+				RecoveryName(state.event), state.reaction.slot, frame, state.reaction.delay, ReactionMoveInput(state.reaction));
 		}
 
 		if (state.event == DummyRecovery::None)
 			return;
 		const auto& configured = ReactionSettings(state.event);
-		if (configured.slot != state.reaction.slot || configured.delay != state.reaction.delay
-			|| !HasDummyRecording(configured.slot))
+		const bool isMove = configured.move != NoDummyMove;
+		const bool available = isMove ? dummyControllerInputHookInstalled && state.moveSequence.length > 0
+			: HasDummyRecording(configured.slot);
+		if (!(configured == state.reaction) || !available)
 		{
-			TraceDummyEnd(configured.slot != state.reaction.slot || configured.delay != state.reaction.delay
-				? "configuration_changed" : configured.slot ? "recording_unavailable" : "disabled", frame);
+			const char* reason = isMove ? "move_unavailable" : configured.slot ? "recording_unavailable" : "disabled";
+			TraceDummyEnd(configured == state.reaction ? reason : "configuration_changed", frame);
 			state.event = DummyRecovery::None;
 			state.lastInput = nullptr;
+			state.lastMoveInput.reset();
 			return;
 		}
 
-		const auto& recording = DummyRecordings[configured.slot - 1];
+		if (state.lastMoveInput)
+		{
+			presetP2Buttons = state.lastMoveInput;
+			return;
+		}
 		if (state.lastInput)
 		{
 			ApplyRecordingFrame(p2Input, state.lastInput, playbackP2Buttons);
@@ -4741,7 +4878,8 @@ namespace
 		if (frame - state.recoveryFrame < static_cast<uint32_t>(configured.delay)
 			|| (!newFrame && previous == DummyRecovery::None))
 			return;
-		if (state.playbackFrame >= recording.length)
+		const int length = isMove ? state.moveSequence.length : DummyRecordings[configured.slot - 1].length;
+		if (state.playbackFrame >= length)
 		{
 			TraceDummyEnd("completed", frame);
 			state.event = DummyRecovery::None;
@@ -4750,8 +4888,9 @@ namespace
 		if (state.playbackFrame == 0)
 		{
 			TrainingTeamEditor::TraceRecording(
-				"reaction playback started event=%s slot=%d frame=%u elapsed=%u length=%d",
-				RecoveryName(state.event), configured.slot, frame, frame - state.recoveryFrame, recording.length);
+				"reaction playback started event=%s slot=%d frame=%u elapsed=%u length=%d move=%s",
+				RecoveryName(state.event), configured.slot, frame, frame - state.recoveryFrame, length,
+				ReactionMoveInput(state.reaction));
 			if (state.event == DummyRecovery::Incoming)
 			{
 				state.incomingPlaybackAction = *reinterpret_cast<const uint32_t*>(fighter + FighterActionOffset);
@@ -4760,7 +4899,13 @@ namespace
 					frame, *state.incomingPlaybackAction, (actionFlags & FighterAirborne) != 0, entering);
 			}
 		}
-		state.lastInput = recording.frames[state.playbackFrame++];
+		if (isMove)
+		{
+			state.lastMoveInput = state.moveSequence.frames[state.playbackFrame++];
+			presetP2Buttons = state.lastMoveInput;
+			return;
+		}
+		state.lastInput = DummyRecordings[configured.slot - 1].frames[state.playbackFrame++];
 		ApplyRecordingFrame(p2Input, state.lastInput, playbackP2Buttons);
 	}
 }
@@ -4771,6 +4916,18 @@ bool HasDummyRecording(int slot)
 		return false;
 	const auto& recording = DummyRecordings[slot - 1];
 	return recording.available && recording.length > 0 && recording.length <= ReplayLength;
+}
+
+const char* DummyMoveLabel(int move)
+{
+	if (move < 0 || move >= static_cast<int>(std::size(DummyMoveGrid)))
+		return "";
+	return DummyMoveGrid[move];
+}
+
+bool IsDummyMoveValid(const DummyReaction& reaction)
+{
+	return ParseDummyMove(ReactionMoveInput(reaction)).has_value();
 }
 
 bool HasDummyControllerInputHook()
@@ -4857,6 +5014,11 @@ uint32_t ConvertDummyFightInput(int player, uint32_t buttons, int alternateContr
 				TrainingTeamEditor::TraceRecording("dummy controller input delivered to p2 slot=%d", dummyControllerCapture.slot);
 			}
 		}
+		else if (player == 1 && presetP2Buttons)
+		{
+			const auto flags = *reinterpret_cast<const uint32_t*>(dummyReaction.fighter + HitStateFlagsOffset);
+			return FaceDummyInput(*presetP2Buttons, flags);
+		}
 		else if (player == 1 && playbackP2Buttons)
 		{
 			buttons = *playbackP2Buttons;
@@ -4877,6 +5039,7 @@ void FUN_1402b41b0(longlong param_1)
 	liveDummyButtons.reset();
 	playbackP1Buttons.reset();
 	playbackP2Buttons.reset();
+	presetP2Buttons.reset();
 	const int traceSlot = RecordingSlot >= 1 && RecordingSlot <= 5 ? RecordingSlot : 1;
 	const auto input = reinterpret_cast<uint8_t*>(param_1);
 	const auto recordingPlayers = recording ? 3u : PlayerMask(recordingP1, recordingP2);

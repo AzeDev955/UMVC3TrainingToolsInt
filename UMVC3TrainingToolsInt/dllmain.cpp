@@ -3186,32 +3186,100 @@ static void DrawDummyReaction(const char* label, DummyReaction& reaction)
 	const auto previous = reaction;
 	ImGui::PushID(label);
 	ImGui::TextUnformatted(UiText(label));
-	const auto slotLabel = reaction.slot ? std::to_string(reaction.slot) : UiText("REC_REACTION_OFF");
-	ImGui::SetNextItemWidth(80.0f);
-	if (ImGui::BeginCombo(UiLabel("REC_SLOT").c_str(), slotLabel.c_str()))
+	std::string selectedSource = UiText("REC_REACTION_OFF");
+	if (reaction.slot)
+		selectedSource = std::string(UiText("REC_REACTION_RECORDING")) + " " + std::to_string(reaction.slot);
+	else if (reaction.move == CustomDummyMove)
+		selectedSource = UiText("REC_REACTION_CUSTOM");
+	else if (reaction.move != NoDummyMove)
+		selectedSource = DummyMoveLabel(reaction.move);
+
+	const ImVec2 cellPadding(2.0f, 2.0f);
+	const auto& style = ImGui::GetStyle();
+	const float cell = (std::max)(44.0f, ImGui::CalcTextSize("236L+M").x + 2.0f * style.FramePadding.x);
+	const float gridWidth = DummyMoveGridSide * (cell + 2.0f * cellPadding.x);
+	ImGui::SetNextItemWidth(145.0f);
+	ImGui::SetNextWindowSizeConstraints(ImVec2(gridWidth + 2.0f * style.WindowPadding.x, 0.0f),
+		ImVec2(FLT_MAX, FLT_MAX));
+	if (ImGui::BeginCombo(UiLabel("REC_REACTION_SOURCE").c_str(), selectedSource.c_str()))
 	{
-		if (ImGui::Selectable(UiText("REC_REACTION_OFF"), reaction.slot == 0))
+		const auto selectMove = [&reaction](int move)
+		{
 			reaction.slot = 0;
+			reaction.move = move;
+			ImGui::CloseCurrentPopup();
+		};
+		if (ImGui::Button(UiText("REC_REACTION_OFF")))
+			selectMove(NoDummyMove);
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!HasDummyControllerInputHook());
+		if (ImGui::Button(UiText("REC_REACTION_CUSTOM")))
+			selectMove(CustomDummyMove);
+		ImGui::EndDisabled();
+
+		ImGui::SeparatorText(UiText("REC_REACTION_RECORDINGS"));
 		for (int slot = 1; slot <= 5; ++slot)
 		{
+			if (slot > 1)
+				ImGui::SameLine();
+			ImGui::PushID(slot);
 			const auto name = std::to_string(slot);
-			if (ImGui::Selectable(name.c_str(), reaction.slot == slot))
+			if (ImGui::Button(name.c_str(), ImVec2(cell, 0.0f)))
+			{
 				reaction.slot = slot;
+				reaction.move = NoDummyMove;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::PopID();
 		}
+
+		ImGui::SeparatorText(UiText("REC_REACTION_MOVES"));
+		ImGui::BeginDisabled(!HasDummyControllerInputHook());
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, cellPadding);
+		if (ImGui::BeginTable("##dummy-moves", DummyMoveGridSide,
+			ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoPadOuterX))
+		{
+			for (int move = 0; move < DummyMoveGridSide * DummyMoveGridSide; ++move)
+			{
+				ImGui::TableNextColumn();
+				const bool selected = reaction.move == move;
+				if (selected)
+					ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_HeaderActive]);
+				if (ImGui::Button(DummyMoveLabel(move), ImVec2(cell, cell)))
+					selectMove(move);
+				if (selected)
+					ImGui::PopStyleColor();
+			}
+			ImGui::EndTable();
+		}
+		ImGui::PopStyleVar();
+		ImGui::EndDisabled();
 		ImGui::EndCombo();
 	}
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(100.0f);
-	ImGui::BeginDisabled(reaction.slot == 0);
+	ImGui::BeginDisabled(!reaction.IsConfigured());
 	ImGui::SliderInt(UiLabel("REC_REACTION_DELAY").c_str(), &reaction.delay, 0, MaxDummyReactionDelay,
 		"%d f", ImGuiSliderFlags_AlwaysClamp);
 	const bool delayEdited = ImGui::IsItemDeactivatedAfterEdit();
 	ImGui::EndDisabled();
+	bool customEdited = false;
+	if (reaction.move == CustomDummyMove)
+	{
+		ImGui::SetNextItemWidth(145.0f);
+		ImGui::InputTextWithHint(UiLabel("REC_REACTION_NOTATION").c_str(), "63214H+L",
+			reaction.customInput.data(), reaction.customInput.size(), ImGuiInputTextFlags_CharsUppercase);
+		customEdited = ImGui::IsItemDeactivatedAfterEdit();
+		if (!IsDummyMoveValid(reaction))
+			ImGui::TextWrapped("%s", UiText("REC_REACTION_NOTATION_HELP"));
+	}
 	if (reaction.slot && !HasDummyRecording(reaction.slot))
 		ImGui::TextDisabled("%s", UiText("REC_REACTION_EMPTY"));
-	if (reaction.slot != previous.slot || delayEdited)
-		TrainingTeamEditor::TraceRecording("reaction configured event=%s slot=%d delay=%d available=%d",
-			label, reaction.slot, reaction.delay, HasDummyRecording(reaction.slot));
+	if (reaction.slot != previous.slot || reaction.move != previous.move || delayEdited || customEdited)
+		TrainingTeamEditor::TraceRecording("reaction configured event=%s slot=%d delay=%d move=%s available=%d",
+			label, reaction.slot, reaction.delay,
+			reaction.move == CustomDummyMove ? reaction.customInput.data() : DummyMoveLabel(reaction.move),
+			reaction.slot ? HasDummyRecording(reaction.slot) : IsDummyMoveValid(reaction));
 	ImGui::PopID();
 }
 
