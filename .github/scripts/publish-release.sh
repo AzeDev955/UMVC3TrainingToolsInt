@@ -2,7 +2,8 @@
 set -euo pipefail
 
 tag=${1:?Falta la versión compilada.}
-if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || $(git rev-parse HEAD) != "$GITHUB_SHA" ]]; then
+version_pattern='^v[0-9]+(\.[0-9]+){2,3}$'
+if [[ ! $tag =~ $version_pattern || $(git rev-parse HEAD) != "$GITHUB_SHA" ]]; then
   echo 'La versión o el commit de publicación no coinciden con la compilación.' >&2
   exit 1
 fi
@@ -14,7 +15,7 @@ if grep -Fxq "$tag" <<< "$stable"; then
   echo "$tag ya está publicada."
   exit 0
 fi
-latest=$(printf '%s\n' "$stable" "$tag" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+latest=$(printf '%s\n' "$stable" "$tag" | grep -E "$version_pattern" | sort -V | tail -n 1)
 if [[ $latest != "$tag" ]]; then
   echo "$latest ya está publicada y es posterior a $tag."
   exit 0

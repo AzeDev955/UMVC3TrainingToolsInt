@@ -26,7 +26,7 @@ namespace
 	constexpr wchar_t InstallerName[] = L"UMVC3TrainingToolsInt-Setup.exe";
 	constexpr size_t MaxResponseBytes = 1024 * 1024;
 	constexpr size_t MaxInstallerBytes = 64 * 1024 * 1024;
-	using Version = std::array<unsigned, 3>;
+	using Version = std::array<unsigned, 4>;
 	using Sha256 = std::array<unsigned char, 32>;
 	using HttpHandle = std::unique_ptr<void, decltype(&WinHttpCloseHandle)>;
 
@@ -51,14 +51,14 @@ namespace
 		Version version{};
 		const char* cursor = tag.data();
 		const char* end = cursor + tag.size();
-		for (auto& part : version)
+		for (size_t index = 0; index < version.size(); ++index)
 		{
-			const auto [next, error] = std::from_chars(cursor, end, part);
+			const auto [next, error] = std::from_chars(cursor, end, version[index]);
 			if (error != std::errc{})
 				return std::nullopt;
-			if (&part == &version.back())
-				return next == end ? std::optional{ version } : std::nullopt;
-			if (next == end || *next != '.')
+			if (next == end)
+				return index >= 2 ? std::optional{ version } : std::nullopt;
+			if (*next != '.')
 				return std::nullopt;
 			cursor = next + 1;
 		}

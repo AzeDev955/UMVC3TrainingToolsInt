@@ -12,8 +12,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $project = Join-Path $root 'UMVC3TrainingToolsInt'
 $versionHeader = Get-Content -Raw -LiteralPath (Join-Path $project 'code/ReleaseUpdate.h')
-$version = [regex]::Match($versionHeader, 'VersionTag\[\]\s*=\s*"(v\d+\.\d+\.\d+)"').Groups[1].Value
-if (!$version) { throw 'VersionTag debe tener el formato vX.Y.Z.' }
+$version = [regex]::Match($versionHeader, 'VersionTag\[\]\s*=\s*"(v[0-9]+(\.[0-9]+){2,3})"').Groups[1].Value
+if (!$version) { throw 'VersionTag debe tener el formato vX.Y.Z o vX.Y.Z.W.' }
 if ($Tag -and $Tag -cne $version) { throw "La etiqueta $Tag no coincide con VersionTag ($version)." }
 if (!(Test-Path -LiteralPath (Join-Path $root "changelog/$version.md") -PathType Leaf)) {
     throw "Falta el changelog de $version."
