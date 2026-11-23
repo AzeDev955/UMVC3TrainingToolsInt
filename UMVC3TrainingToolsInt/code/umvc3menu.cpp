@@ -4471,6 +4471,17 @@ namespace
 	}
 
 	enum class DummyStun { None, Hit, Block };
+	enum class FighterRecoveryTimer : uint32_t { GroundHit = 0, AirHit = 2 };
+	constexpr uintptr_t RecoveryTimerOffset = 0x414c;
+	constexpr uintptr_t GroundHitstunOffset = 0x4154;
+	constexpr uintptr_t BlockstunOffset = 0x4158;
+	constexpr uintptr_t AirHitstunOffset = 0x415c;
+	constexpr uintptr_t HitStateFlagsOffset = 0x14f8;
+	constexpr uintptr_t HitRecoveryFlagsOffset = 0x14fc;
+	constexpr uintptr_t FighterMotionFlagsOffset = 0x1504;
+	constexpr uint32_t AirHitActive = 0x4;
+	constexpr uint32_t AirHitRecoverySuppressed = 0x800000;
+	constexpr uint32_t AirHitMotionSuppressed = 0x8000;
 
 	struct DummyReactionState
 	{
@@ -4529,11 +4540,19 @@ namespace
 
 	DummyStun ReadDummyStun(uintptr_t fighter)
 	{
-		// Remaining ground hitstun, blockstun and air hitstun, respectively.
-		const auto timers = reinterpret_cast<const float*>(fighter + 0x4154);
-		if (timers[0] > 0.0f || timers[2] > 0.0f)
+		// The native recovery update selects one timer and can leave inactive timers positive.
+		const auto timer = *reinterpret_cast<const FighterRecoveryTimer*>(fighter + RecoveryTimerOffset);
+		if (timer == FighterRecoveryTimer::GroundHit
+			&& *reinterpret_cast<const float*>(fighter + GroundHitstunOffset) > 0.0f)
 			return DummyStun::Hit;
-		return timers[1] > 0.0f ? DummyStun::Block : DummyStun::None;
+		if (timer == FighterRecoveryTimer::AirHit
+			&& (*reinterpret_cast<const uint32_t*>(fighter + HitStateFlagsOffset) & AirHitActive)
+			&& !(*reinterpret_cast<const uint32_t*>(fighter + HitRecoveryFlagsOffset) & AirHitRecoverySuppressed)
+			&& !(*reinterpret_cast<const uint32_t*>(fighter + FighterMotionFlagsOffset) & AirHitMotionSuppressed)
+			&& *reinterpret_cast<const float*>(fighter + AirHitstunOffset) > 0.0f)
+			return DummyStun::Hit;
+		return *reinterpret_cast<const float*>(fighter + BlockstunOffset) > 0.0f
+			? DummyStun::Block : DummyStun::None;
 	}
 
 	void ApplyDummyReaction(uint8_t* p2Input, bool manualP2PlaybackOrRecording)
@@ -4580,10 +4599,14 @@ namespace
 		state.stun = stun;
 		if (stun != previousStun)
 		{
-			const auto timers = reinterpret_cast<const float*>(fighter + 0x4154);
+			const auto timer = *reinterpret_cast<const uint32_t*>(fighter + RecoveryTimerOffset);
+			const auto hitFlags = *reinterpret_cast<const uint32_t*>(fighter + HitStateFlagsOffset);
 			TrainingTeamEditor::TraceRecording(
-				"p2 stun frame=%u from=%s to=%s ground=%.2f block=%.2f air=%.2f",
-				frame, StunName(previousStun), StunName(stun), timers[0], timers[1], timers[2]);
+				"p2 stun frame=%u from=%s to=%s timer=%u hit_flags=%08X ground=%.2f block=%.2f air=%.2f",
+				frame, StunName(previousStun), StunName(stun), timer, hitFlags,
+				*reinterpret_cast<const float*>(fighter + GroundHitstunOffset),
+				*reinterpret_cast<const float*>(fighter + BlockstunOffset),
+				*reinterpret_cast<const float*>(fighter + AirHitstunOffset));
 		}
 		if (stun != DummyStun::None)
 		{
