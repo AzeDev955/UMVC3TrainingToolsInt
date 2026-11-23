@@ -43,6 +43,7 @@ namespace
 	constexpr uintptr_t ResolveStageAddress = 0x1402bc5d0;
 	constexpr uintptr_t SetBattleModeAddress = 0x14024e050;
 	constexpr uintptr_t SetBattleStageAddress = 0x1401cf670;
+	constexpr uintptr_t SetBattleTimeAddress = 0x140146530;
 	constexpr uintptr_t SetUiStageAddress = 0x14024e140;
 	constexpr uintptr_t SceneManagerAddress = 0x140e17a80;
 	constexpr uintptr_t SceneManagerTable = 0x140b090c0;
@@ -74,6 +75,7 @@ namespace
 	constexpr int OfflineCommand = 1;
 	constexpr int TrainingCommand = 8;
 	constexpr int TrainingMode = 5;
+	constexpr int UnlimitedBattleTime = -1;
 	constexpr int AwaitPlayer = 0;
 	constexpr int SelectFighter = 2;
 	constexpr int LoadSelectedFighters = 11;
@@ -317,20 +319,21 @@ namespace
 			return false;
 
 		const int archiveStage = reinterpret_cast<ResolveStage>(GameAddress(ResolveStageAddress))(gameUi, nativeStage);
-	const auto scene = std::find_if(std::begin(StageScenes), std::end(StageScenes), [archiveStage](const StageScene& entry)
-	{
-		return entry.archive == archiveStage;
-	});
-	if (scene == std::end(StageScenes) || !TrainingTeamEditor::PrepareQuickMatch(picks))
+		const auto scene = std::find_if(std::begin(StageScenes), std::end(StageScenes), [archiveStage](const StageScene& entry)
+		{
+			return entry.archive == archiveStage;
+		});
+		if (scene == std::end(StageScenes) || !TrainingTeamEditor::PrepareQuickMatch(picks))
 			return false;
 
-	// Request the stage itself so the scene manager constructs the entire battle hierarchy.
+		// Apply Training's rules before the stage constructs the battle.
 		reinterpret_cast<SetGameValue>(GameAddress(SetBattleModeAddress))(settings, TrainingMode);
+		reinterpret_cast<SetGameValue>(GameAddress(SetBattleTimeAddress))(settings, UnlimitedBattleTime);
 		reinterpret_cast<SetGameValue>(GameAddress(SetBattleStageAddress))(settings, archiveStage);
 		reinterpret_cast<SetGameValue>(GameAddress(SetUiStageAddress))(gameUi, archiveStage);
 		directBattleStage.store(archiveStage);
 		request.store(Request::WaitForBattle);
-	reinterpret_cast<QueueScene>(GameAddress(QueueSceneAddress))(sceneManager, GameAddress(scene->type));
+		reinterpret_cast<QueueScene>(GameAddress(QueueSceneAddress))(sceneManager, GameAddress(scene->type));
 		char message[128];
 		std::snprintf(message, sizeof(message), "direct Training scene queued (selector ID=%d archive ID=%03d)",
 			stage, archiveStage);
@@ -970,6 +973,8 @@ void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
 		&& MatchesGameCode(QueueSceneAddress, std::array<uint8_t, 8>{ 0x48, 0x89, 0x91, 0x40, 0x70, 0x00, 0x00, 0xc3 })
 		&& MatchesGameCode(SetBattleModeAddress, std::array<uint8_t, 8>{ 0x48, 0x89, 0x5c, 0x24, 0x08, 0x57, 0x48, 0x83 })
 		&& MatchesGameCode(SetBattleStageAddress, std::array<uint8_t, 7>{ 0x89, 0x91, 0x58, 0x03, 0x00, 0x00, 0xc3 })
+		&& MatchesGameCode(SetBattleTimeAddress, std::array<uint8_t, 11>{ 0x48, 0x89, 0x5c, 0x24, 0x08, 0x57, 0x48, 0x83, 0xec, 0x20, 0x8b })
+		&& MatchesGameCode(SetBattleTimeAddress + 0x17, std::array<uint8_t, 6>{ 0x89, 0x9f, 0x5c, 0x03, 0x00, 0x00 })
 		&& MatchesGameCode(SetUiStageAddress, std::array<uint8_t, 7>{ 0x89, 0x91, 0x34, 0x59, 0x00, 0x00, 0xc3 })
 		&& MatchesGameCode(ResolveStageAddress, std::array<uint8_t, 8>{ 0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x08, 0x48 });
 
