@@ -1004,7 +1004,10 @@ bool TrainingTeamEditor::DrawQuickSetup()
 	DrawQuickPresets();
 	ImGui::Combo(UiText("QUICK_STAGE"), &quickStage, Stages.data(), static_cast<int>(Stages.size()));
 	DrawTeamDraft(quickDraft);
-	ImGui::Checkbox(UiText("QUICK_DIRECT_LAUNCH"), &quickDirectLaunch);
+	if (TrainingShortcut::CanLaunchViaNativeMenus())
+		ImGui::Checkbox(UiText("QUICK_DIRECT_LAUNCH"), &quickDirectLaunch);
+	else
+		ImGui::TextWrapped("%s", UiText("QUICK_DIRECT_ONLY"));
 	if (*quickSetupStatus)
 		ImGui::TextWrapped("%s", UiText(quickSetupStatus));
 

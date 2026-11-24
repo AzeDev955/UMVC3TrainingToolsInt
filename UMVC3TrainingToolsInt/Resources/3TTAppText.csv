@@ -272,6 +272,7 @@ QUICK_TITLE,Quick Training,Entrenamiento rápido
 QUICK_STAGE,Stage,Escenario
 QUICK_START,Start Training,Iniciar entrenamiento
 QUICK_DIRECT_LAUNCH,Direct launch (experimental),Carga directa (experimental)
+QUICK_DIRECT_ONLY,Quick Training uses direct launch because the native menus are modified.,El acceso rápido usa la carga directa porque los menús del juego se han modificado.
 QUICK_LOADING,Loading Training…,Cargando entrenamiento…
 QUICK_RETURN_MAIN,Return to the main menu to start a Training match.,Vuelve al menú principal para iniciar una partida de Entrenamiento.
 QUICK_COMPLETE_TEAMS,Choose three different fighters and an assist for each team.,Elige tres personajes distintos por equipo y una asistencia para cada personaje.
