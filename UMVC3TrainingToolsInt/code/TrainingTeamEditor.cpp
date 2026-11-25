@@ -38,7 +38,7 @@ namespace
 	constexpr uintptr_t RestartOffset = 0x118;
 	constexpr uintptr_t CharacterReloadCountdownOffset = 0x1210;
 	constexpr uintptr_t LoadedAssistOffset = 0x2dbc; // mAssistType on the loaded fighter.
-	constexpr uintptr_t LoadedColorOffset = 0x2da0; // Palette copied from the selection when the fighter is created.
+	constexpr uintptr_t LoadedColorOffset = 0x2db8; // Costume and palette index copied from the selection on creation.
 	constexpr const char* AssistTypes[] = { "TEAM_ALPHA", "TEAM_BETA", "TEAM_GAMMA" };
 	// Native stage-selector IDs, in the order used by the game's stage resolver.
 	constexpr std::array<const char*, TrainingShortcut::StageCount> Stages{
