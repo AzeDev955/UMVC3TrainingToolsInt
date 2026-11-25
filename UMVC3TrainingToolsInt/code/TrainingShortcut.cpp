@@ -120,6 +120,7 @@ namespace
 	bool firstGameEndScene = true;
 	bool launchQueued = false; // Tool thread only.
 	bool directLaunchSupported = false;
+	bool nativeMenuLaunchSupported = false;
 	bool firstSelectUpdate = true; // Game thread only.
 
 	enum class Request
@@ -130,7 +131,8 @@ namespace
 		StageTeams,
 		ConfirmStage,
 		OpenDirect,
-		WaitForBattle
+		WaitForBattle,
+		WaitForNativeBattle
 	};
 
 	std::atomic<Request> request{ Request::None };
@@ -243,6 +245,8 @@ namespace
 				waitingFor = "main menu for direct launch";
 			else if (step == Request::WaitForBattle)
 				waitingFor = "direct battle scene";
+			else if (step == Request::WaitForNativeBattle)
+				waitingFor = "native battle scene";
 			char message[96];
 			std::snprintf(message, sizeof(message), "Start Training timed out waiting for %s", waitingFor);
 			TrainingTeamEditor::TraceQuickShortcut(message);
@@ -312,18 +316,27 @@ namespace
 		}
 		int nativeStage = -1;
 		// The game's stage table starts with Random. The preset stores the index after it.
-		if (!gameUi || !settings || PointerAt(sceneManager) != GameAddress(SceneManagerTable)
-			|| !Read(sceneManager + QueuedSceneOffset, pendingScene) || pendingScene
-			|| !Read(GameAddress(StageSelectionIds) + (stage + 1) * sizeof(int), nativeStage)
-			|| nativeStage != stage)
+		const bool sceneManagerReady = sceneManager && PointerAt(sceneManager) == GameAddress(SceneManagerTable)
+			&& Read(sceneManager + QueuedSceneOffset, pendingScene);
+		const bool hasStage = Read(GameAddress(StageSelectionIds) + (stage + 1) * sizeof(int), nativeStage);
+		if (!gameUi || !settings || !sceneManagerReady || pendingScene || !hasStage || nativeStage != stage)
+		{
+			TrainingTeamEditor::TraceQuickShortcut("direct preflight rejected stage=%d native_stage=%d game_ui=%d settings=%d scene_manager_ready=%d scene_pending=%d",
+				stage, nativeStage, gameUi != 0, settings != 0, sceneManagerReady, pendingScene != 0);
 			return false;
+		}
 
 		const int archiveStage = reinterpret_cast<ResolveStage>(GameAddress(ResolveStageAddress))(gameUi, nativeStage);
 		const auto scene = std::find_if(std::begin(StageScenes), std::end(StageScenes), [archiveStage](const StageScene& entry)
 		{
 			return entry.archive == archiveStage;
 		});
-		if (scene == std::end(StageScenes) || !TrainingTeamEditor::PrepareQuickMatch(picks))
+		if (scene == std::end(StageScenes))
+		{
+			TrainingTeamEditor::TraceQuickShortcut("direct preflight rejected unknown archive=%d stage=%d", archiveStage, stage);
+			return false;
+		}
+		if (!TrainingTeamEditor::PrepareQuickMatch(picks))
 			return false;
 
 		// Apply Training's rules before the stage constructs the battle.
@@ -357,6 +370,12 @@ namespace
 					return;
 				if (QueueDirectTraining())
 					return;
+				if (!nativeMenuLaunchSupported)
+				{
+					TrainingTeamEditor::TraceQuickShortcut("direct launch preflight failed; native menus are unavailable");
+					request.store(Request::None);
+					return;
+				}
 				TrainingTeamEditor::TraceQuickShortcut("direct launch preflight failed; using native menus");
 			}
 			TrainingTeamEditor::TraceQuickShortcut("confirming Offline in the main menu");
@@ -430,13 +449,14 @@ namespace
 			Read(gameUi + UiSelectedStage, resolved);
 			std::snprintf(message, sizeof(message), "stage confirmed (selector ID=%d archive ID=%03d)", stage, resolved);
 			TrainingTeamEditor::TraceQuickShortcut(message);
+			request.store(Request::WaitForNativeBattle);
 		}
 		else
 		{
 			*cursor = previousCursor;
 			TrainingTeamEditor::TraceQuickShortcut("stage confirmation rejected");
+			request.store(Request::None);
 		}
-		request.store(Request::None);
 	}
 
 	bool CharacterSelectUpdateHook(void* object)
@@ -856,16 +876,25 @@ namespace
 bool TrainingShortcut::TakeSetupRequest(bool controllerPressed)
 {
 	const auto step = request.load();
-	if (step == Request::WaitForBattle && Pending(step))
+	if ((step == Request::WaitForBattle || step == Request::WaitForNativeBattle) && Pending(step))
 	{
-		const auto settings = PointerAt(GameAddress(BattleSettingsAddress));
-		int stage = -1;
-		if (settings && Read(settings + BattleStageOffset, stage) && stage == directBattleStage.load()
-			&& TrainingTeamEditor::IsTrainingPlayable())
+		bool expectedStage = true;
+		if (step == Request::WaitForBattle)
 		{
-			Request expected = Request::WaitForBattle;
+			const auto settings = PointerAt(GameAddress(BattleSettingsAddress));
+			int stage = -1;
+			expectedStage = settings && Read(settings + BattleStageOffset, stage) && stage == directBattleStage.load();
+		}
+		const auto action = expectedStage ? TrainingTeamEditor::GetPlayableTrainingAction() : 0;
+		if (action)
+		{
+			auto expected = step;
 			if (request.compare_exchange_strong(expected, Request::None))
-				TrainingTeamEditor::TraceQuickShortcut("direct Training match playable with expected stage");
+			{
+				TrainingTeamEditor::ApplyQuickExercise(action);
+				TrainingTeamEditor::TraceQuickShortcut(step == Request::WaitForBattle
+					? "direct Training match playable with expected stage" : "native Training match playable");
+			}
 		}
 	}
 	if (step != Request::None && Pending(step) && step == Request::StageTeams)
@@ -905,13 +934,40 @@ bool TrainingShortcut::TakeSetupRequest(bool controllerPressed)
 	return fromButton;
 }
 
+bool TrainingShortcut::CanLaunchViaNativeMenus()
+{
+	return nativeMenuLaunchSupported;
+}
+
+bool TrainingShortcut::CanLaunchDirectly()
+{
+	return directLaunchSupported;
+}
+
+int TrainingShortcut::CurrentTrainingStage()
+{
+	// Archive IDs in the order of the 18 selectable stages in the native resolver.
+	constexpr std::array<int, StageCount> archives{ 105, 5, 104, 4, 110, 10, 103, 3, 102, 2, 109, 9, 107, 7, 106, 6, 100, 0 };
+	const auto settings = PointerAt(GameAddress(BattleSettingsAddress));
+	int mode = -1;
+	int archive = -1;
+	if (!settings || !Read(settings + BattleModeOffset, mode) || mode != TrainingMode
+		|| !Read(settings + BattleStageOffset, archive))
+		return -1;
+	const auto stage = std::find(archives.begin(), archives.end(), archive);
+	return stage == archives.end() ? -1 : static_cast<int>(stage - archives.begin());
+}
+
 bool TrainingShortcut::StartTraining(const TeamPicks& picks, int stage, bool direct)
 {
-	TrainingTeamEditor::TraceQuickShortcut("Start Training pressed");
-	if (stage < 0 || stage >= StageCount || launchQueued || !shortcutAvailable.load() || request.load() != Request::None
-		|| !IsReadyMenu(ReadMenu(), MainMenuPhase, MainMenuTable))
+	const auto menu = ReadMenu();
+	const auto currentRequest = request.load();
+	const bool available = shortcutAvailable.load();
+	if (stage < 0 || stage >= StageCount || launchQueued || !available || currentRequest != Request::None
+		|| !IsReadyMenu(menu, MainMenuPhase, MainMenuTable))
 	{
-		TrainingTeamEditor::TraceQuickShortcut("Start Training rejected: main menu or selection unavailable");
+		TrainingTeamEditor::TraceQuickShortcut("Start Training rejected stage=%d phase=%d state=%d available=%d queued=%d request=%d",
+			stage, menu.phase, menu.state, available, launchQueued, static_cast<int>(currentRequest));
 		return false;
 	}
 	{
@@ -919,11 +975,12 @@ bool TrainingShortcut::StartTraining(const TeamPicks& picks, int stage, bool dir
 		queuedPicks = picks;
 		queuedStage = stage;
 	}
-	queuedDirect = direct && directLaunchSupported;
+	queuedDirect = directLaunchSupported && (direct || !nativeMenuLaunchSupported);
 	if (direct && !queuedDirect)
 		TrainingTeamEditor::TraceQuickShortcut("direct launch unavailable for this executable; using native menus");
 	launchQueued = true;
-	TrainingTeamEditor::TraceQuickShortcut("Start Training queued; waiting for the tool window to hide");
+	TrainingTeamEditor::TraceQuickShortcut("Start Training queued stage=%d direct_requested=%d route=%s; waiting for the tool window to hide",
+		stage, direct, queuedDirect ? "direct" : "native");
 	return true;
 }
 
@@ -949,26 +1006,21 @@ void TrainingShortcut::DispatchTraining()
 	request.store(queuedDirect ? Request::OpenDirect : Request::OpenOffline);
 }
 
-void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
+void TrainingShortcut::Initialize(HWND window)
 {
+	toolWindow = window;
 	originalMainUpdate = reinterpret_cast<MenuUpdate>(GameAddress(0x1403e74f0));
 	originalOfflineUpdate = reinterpret_cast<MenuUpdate>(GameAddress(0x1403e6b80));
 	constexpr std::array<uint8_t, 8> selectSignature{ 0x40, 0x56, 0x57, 0x48, 0x83, 0xec, 0x58, 0x48 };
 	constexpr std::array<uint8_t, 8> finishSignature{ 0x48, 0x63, 0xc2, 0xc7, 0x84, 0x81, 0xb4, 0x02 };
 	constexpr std::array<uint8_t, 8> stageSignature{ 0x40, 0x57, 0x48, 0x83, 0xec, 0x20, 0x80, 0x79 };
-	std::array<uint8_t, selectSignature.size()> actual{};
-	D3DDEVICE_CREATION_PARAMETERS parameters{};
-	if (toolDevice && SUCCEEDED(toolDevice->GetCreationParameters(&parameters)))
-		toolWindow = parameters.hFocusWindow;
-	if (PointerAt(GameAddress(MainMenuTable) + MenuSetStateSlot) != GameAddress(MainMenuSetState)
-		|| PointerAt(GameAddress(OfflineMenuTable) + MenuSetStateSlot) != GameAddress(OfflineMenuSetState)
-		|| !Read(GameAddress(CharacterSelectUpdate), actual) || actual != selectSignature
-		|| !Read(GameAddress(CharacterFinishSelection), actual) || actual != finishSignature
-		|| !Read(GameAddress(StageConfirmAddress), actual) || actual != stageSignature)
-	{
-		TrainingTeamEditor::TraceQuickShortcut("native menu signature mismatch");
-		return;
-	}
+	const bool nativeMenuSignaturesMatch =
+		PointerAt(GameAddress(MainMenuTable) + MenuSetStateSlot) == GameAddress(MainMenuSetState)
+		&& PointerAt(GameAddress(OfflineMenuTable) + MenuSetStateSlot) == GameAddress(OfflineMenuSetState)
+		&& MatchesGameCode(CharacterSelectUpdate, selectSignature)
+		&& MatchesGameCode(CharacterFinishSelection, finishSignature)
+		&& MatchesGameCode(StageConfirmAddress, stageSignature);
+
 	directLaunchSupported = PointerAt(GameAddress(SceneManagerTable) + QueueSceneSlot) == GameAddress(QueueSceneAddress)
 		&& MatchesGameCode(QueueSceneAddress, std::array<uint8_t, 8>{ 0x48, 0x89, 0x91, 0x40, 0x70, 0x00, 0x00, 0xc3 })
 		&& MatchesGameCode(SetBattleModeAddress, std::array<uint8_t, 8>{ 0x48, 0x89, 0x5c, 0x24, 0x08, 0x57, 0x48, 0x83 })
@@ -977,48 +1029,66 @@ void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
 		&& MatchesGameCode(SetBattleTimeAddress + 0x17, std::array<uint8_t, 6>{ 0x89, 0x9f, 0x5c, 0x03, 0x00, 0x00 })
 		&& MatchesGameCode(SetUiStageAddress, std::array<uint8_t, 7>{ 0x89, 0x91, 0x34, 0x59, 0x00, 0x00, 0xc3 })
 		&& MatchesGameCode(ResolveStageAddress, std::array<uint8_t, 8>{ 0x48, 0x8b, 0xc4, 0x48, 0x89, 0x58, 0x08, 0x48 });
+	TrainingTeamEditor::TraceQuickShortcut("compatibility native_signatures=%d direct_signatures=%d", nativeMenuSignaturesMatch, directLaunchSupported);
 
+	if (!directLaunchSupported && !nativeMenuSignaturesMatch)
+	{
+		TrainingTeamEditor::TraceQuickShortcut("Training launch unavailable: native menu and direct launch signatures do not match");
+		return;
+	}
 	const auto initialized = MH_Initialize();
 	if (initialized != MH_OK && initialized != MH_ERROR_ALREADY_INITIALIZED)
 	{
 		TraceHook("MinHook initialization failed", initialized);
 		return;
 	}
-	void* original = nullptr;
-	auto* selectTarget = reinterpret_cast<void*>(GameAddress(CharacterSelectUpdate));
-	const auto createSelect = MH_CreateHook(selectTarget, reinterpret_cast<void*>(CharacterSelectUpdateHook), &original);
-	if (createSelect != MH_OK)
+	if (!ReplaceMenuUpdate(MainMenuTable, originalMainUpdate, MainUpdate))
 	{
-		TraceHook("could not hook character selection", createSelect);
+		TrainingTeamEditor::TraceQuickShortcut("main menu hook unavailable");
 		return;
 	}
-	originalSelectUpdate = reinterpret_cast<SelectUpdate>(original);
 
-	const bool mainHooked = ReplaceMenuUpdate(MainMenuTable, originalMainUpdate, MainUpdate);
-	const bool offlineHooked = mainHooked
-		&& ReplaceMenuUpdate(OfflineMenuTable, originalOfflineUpdate, OfflineUpdate);
-	const auto enableSelect = offlineHooked ? MH_EnableHook(selectTarget) : MH_ERROR_DISABLED;
-	if (!offlineHooked || enableSelect != MH_OK)
+	void* original = nullptr;
+	if (nativeMenuSignaturesMatch)
 	{
-		if (!offlineHooked)
-			TrainingTeamEditor::TraceQuickShortcut(mainHooked ? "Offline menu hook unavailable" : "main menu hook unavailable");
+		auto* selectTarget = reinterpret_cast<void*>(GameAddress(CharacterSelectUpdate));
+		const auto createSelect = MH_CreateHook(selectTarget, reinterpret_cast<void*>(CharacterSelectUpdateHook), &original);
+		if (createSelect == MH_OK)
+		{
+			originalSelectUpdate = reinterpret_cast<SelectUpdate>(original);
+			const bool offlineHooked = ReplaceMenuUpdate(OfflineMenuTable, originalOfflineUpdate, OfflineUpdate);
+			const auto enableSelect = offlineHooked ? MH_EnableHook(selectTarget) : MH_ERROR_DISABLED;
+			nativeMenuLaunchSupported = offlineHooked && enableSelect == MH_OK;
+			if (!nativeMenuLaunchSupported)
+			{
+				if (offlineHooked)
+					ReplaceMenuUpdate(OfflineMenuTable, OfflineUpdate, originalOfflineUpdate);
+				MH_RemoveHook(selectTarget);
+				TraceHook("native menu launch unavailable", enableSelect);
+			}
+		}
 		else
-			TraceHook("could not enable character selection hook", enableSelect);
-		if (offlineHooked)
-			ReplaceMenuUpdate(OfflineMenuTable, OfflineUpdate, originalOfflineUpdate);
-		if (mainHooked)
-			ReplaceMenuUpdate(MainMenuTable, MainUpdate, originalMainUpdate);
-		MH_RemoveHook(selectTarget);
+			TraceHook("could not hook character selection", createSelect);
+	}
+	else
+		TrainingTeamEditor::TraceQuickShortcut("native menu signature mismatch; leaving character selection untouched");
+
+	if (!nativeMenuLaunchSupported && !directLaunchSupported)
+	{
+		ReplaceMenuUpdate(MainMenuTable, MainUpdate, originalMainUpdate);
 		return;
 	}
+	if (!nativeMenuLaunchSupported)
+		TrainingTeamEditor::TraceQuickShortcut("F4 available with direct Training launch only");
 	shortcutAvailable.store(true);
 	TrainingTeamEditor::TraceQuickShortcut("native hooks ready; polling F4 independently of the overlay");
+}
 
-	if (!toolDevice || !toolWindow)
-	{
-		TrainingTeamEditor::TraceQuickShortcut("menu overlay unavailable: no tool Direct3D window");
+void TrainingShortcut::InitializeOverlay(IDirect3DDevice9* toolDevice)
+{
+	if (!shortcutAvailable.load())
 		return;
-	}
+	void* original = nullptr;
 	void* endSceneTarget = (*reinterpret_cast<void***>(toolDevice))[EndSceneSlot];
 	const auto createOverlay = MH_CreateHook(endSceneTarget, reinterpret_cast<void*>(DrawGameMenu), &original);
 	if (createOverlay == MH_OK)

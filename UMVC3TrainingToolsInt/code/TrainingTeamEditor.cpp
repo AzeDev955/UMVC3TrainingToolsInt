@@ -1,6 +1,7 @@
 #include "../pch.h"
 #include "TrainingTeamEditor.h"
 #include "Localizer.h"
+#include "ReleaseUpdate.h"
 
 #include "../gui/imgui/imgui.h"
 #include "umvc3menu.h"
@@ -12,11 +13,13 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdint>
+#include <cwchar>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <memory>
 #include <numeric>
+#include <shellapi.h>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -35,6 +38,7 @@ namespace
 	constexpr uintptr_t RestartOffset = 0x118;
 	constexpr uintptr_t CharacterReloadCountdownOffset = 0x1210;
 	constexpr uintptr_t LoadedAssistOffset = 0x2dbc; // mAssistType on the loaded fighter.
+	constexpr uintptr_t LoadedColorOffset = 0x2db8; // Costume and palette index copied from the selection on creation.
 	constexpr const char* AssistTypes[] = { "TEAM_ALPHA", "TEAM_BETA", "TEAM_GAMMA" };
 	// Native stage-selector IDs, in the order used by the game's stage resolver.
 	constexpr std::array<const char*, TrainingShortcut::StageCount> Stages{
@@ -172,6 +176,7 @@ namespace
 	{
 		uintptr_t gameClass;
 		int32_t assist;
+		int32_t color;
 
 		bool operator==(const LoadedFighter&) const = default;
 	};
@@ -182,6 +187,24 @@ namespace
 		int source;
 		int id;
 		int assist;
+		int color = TrainingShortcut::AutomaticColor;
+	};
+
+	constexpr std::array QuickResetChoices{
+		std::pair{ "QUICK_RESET_CENTER", TrainingTeamEditor::Center },
+		std::pair{ "QUICK_RESET_LEFT", TrainingTeamEditor::LeftCorner },
+		std::pair{ "QUICK_RESET_RIGHT", TrainingTeamEditor::RightCorner }
+	};
+	constexpr std::array QuickReactionLabels{
+		"REC_REACTION_HIT", "REC_REACTION_BLOCK", "REC_REACTION_WAKEUP", "REC_REACTION_INCOMING"
+	};
+	constexpr std::array DummyReactionSettings{ &DummyOnHit, &DummyOnBlock, &DummyOnWakeup, &DummyOnIncoming };
+	struct QuickExercise
+	{
+		int resetPosition = 0;
+		std::array<DummyReaction, QuickReactionLabels.size()> reactions{};
+
+		bool operator==(const QuickExercise&) const = default;
 	};
 
 	struct QuickPreset
@@ -189,15 +212,9 @@ namespace
 		std::string name;
 		TrainingShortcut::TeamPicks picks{};
 		int stage{};
+		std::optional<QuickExercise> exercise;
 
-		bool operator==(const QuickPreset& other) const
-		{
-			return name == other.name && stage == other.stage
-				&& std::equal(picks.begin(), picks.end(), other.picks.begin(), [](const auto& left, const auto& right)
-				{
-					return left.id == right.id && left.assist == right.assist;
-				});
-		}
+		bool operator==(const QuickPreset&) const = default;
 	};
 
 	struct Match
@@ -218,6 +235,8 @@ namespace
 		bool uncertain = false;
 		unsigned number = 0;
 		uint32_t reloadFlags = 0;
+		const char* successStatus = nullptr;
+		std::optional<QuickExercise> exercise;
 	};
 
 	struct ActionState
@@ -234,6 +253,9 @@ namespace
 		uintptr_t action{};
 		ULONGLONG readyAt{};
 		std::optional<TrainingTeamEditor::XPositions> positions;
+		ULONGLONG started{};
+		bool waitLogged = false;
+		bool initialPlacement = false;
 	};
 
 	Match draftFrom;
@@ -246,7 +268,14 @@ namespace
 	bool quickDirectLaunch = true;
 	const char* quickSetupStatus = "";
 	constexpr size_t PresetNameCapacity = 64;
-	constexpr int PresetVersion = 1;
+	constexpr int TeamPresetVersion = 1;
+	constexpr int ExercisePresetVersion = 2;
+	constexpr int ColorPresetVersion = 3;
+	bool useQuickExercise = false;
+	QuickExercise quickExercise;
+	std::optional<QuickExercise> queuedExercise;
+	uintptr_t quickExerciseAction = 0;
+	TrainingTeamEditor::XPositions quickExerciseReset{};
 	std::filesystem::path quickPresetFolder;
 	std::vector<QuickPreset> quickPresets;
 	std::optional<QuickPreset> selectedQuickPreset;
@@ -257,6 +286,7 @@ namespace
 	const char* status = "";
 	constexpr wchar_t LogName[] = L"UMVC3TrainingToolsInt-Teams.log";
 	constexpr wchar_t RecordingLogName[] = L"UMVC3TrainingToolsInt-Recording.log";
+	constexpr std::uintmax_t LogRotateBytes = 4 * 1024 * 1024;
 	std::filesystem::path logPath;
 	std::filesystem::path recordingLogPath;
 	SRWLOCK logLock = SRWLOCK_INIT;
@@ -275,8 +305,8 @@ namespace
 	void WriteLogTimestamp(FILE* file)
 	{
 		SYSTEMTIME time{};
-		GetLocalTime(&time);
-		std::fprintf(file, "%04d-%02d-%02d %02d:%02d:%02d.%03d ",
+		GetSystemTime(&time);
+		std::fprintf(file, "%04d-%02d-%02d %02d:%02d:%02d.%03d UTC ",
 			time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds);
 	}
 
@@ -288,7 +318,7 @@ namespace
 		if (opened)
 		{
 			WriteLogTimestamp(file);
-			std::fprintf(file, "attempt=%u ", attempt);
+			std::fprintf(file, "pid=%lu attempt=%u ", GetCurrentProcessId(), attempt);
 			va_list args;
 			va_start(args, format);
 			std::vfprintf(file, format, args);
@@ -300,6 +330,19 @@ namespace
 		return opened;
 	}
 
+	void RotateLog(const std::filesystem::path& path)
+	{
+		std::error_code error;
+		const auto size = std::filesystem::file_size(path, error);
+		if (!error && size >= LogRotateBytes)
+		{
+			auto previous = path;
+			previous.replace_extension(L".previous.log");
+			if (!MoveFileExW(path.c_str(), previous.c_str(), MOVEFILE_REPLACE_EXISTING))
+				Log(0, "diagnostics: rotation failed (Windows error %lu)", GetLastError());
+		}
+	}
+
 	void OpenRecordingLog(const std::filesystem::path& directory)
 	{
 		std::error_code error;
@@ -308,12 +351,14 @@ namespace
 			return;
 
 		const auto path = directory / RecordingLogName;
+		RotateLog(path);
 		FILE* file = nullptr;
 		if (_wfopen_s(&file, path.c_str(), L"a") != 0)
 			return;
 
 		WriteLogTimestamp(file);
-		std::fprintf(file, "Recording diagnostics started (pid=%lu)\n", GetCurrentProcessId());
+		std::fprintf(file, "Recording diagnostics started pid=%lu version=%s build=%s %s\n",
+			GetCurrentProcessId(), ReleaseUpdate::VersionTag, __DATE__, __TIME__);
 		std::fclose(file);
 		recordingLogPath = path;
 	}
@@ -342,7 +387,8 @@ namespace
 			}
 		}
 
-		const bool opened = Log(0, "Team editor with native reload started (pid=%lu)", GetCurrentProcessId());
+		RotateLog(logPath);
+		const bool opened = Log(0, "diagnostics: started version=%s build=%s %s", ReleaseUpdate::VersionTag, __DATE__, __TIME__);
 		if (opened && moveError != ERROR_SUCCESS && moveError != ERROR_FILE_NOT_FOUND)
 			Log(0, "Could not move the previous log (Windows error %lu)", moveError);
 		return opened;
@@ -436,7 +482,8 @@ namespace
 				const auto fighter = fighters[position];
 				auto& loaded = teams[side * SlotsPerTeam + position];
 				if (!Read(fighter, loaded.gameClass) || !loaded.gameClass
-					|| !Read(fighter + LoadedAssistOffset, loaded.assist))
+					|| !Read(fighter + LoadedAssistOffset, loaded.assist)
+					|| !Read(fighter + LoadedColorOffset, loaded.color))
 					return false;
 			}
 		}
@@ -448,12 +495,49 @@ namespace
 		return id > 0 && id < static_cast<int>(std::size(Roster));
 	}
 
+	bool HasAlternateCostume(int id)
+	{
+		static const auto available = []
+		{
+			std::array<bool, std::size(Roster)> costumes{};
+			wchar_t executable[MAX_PATH]{};
+			const auto length = GetModuleFileNameW(nullptr, executable, MAX_PATH);
+			if (!length || length >= MAX_PATH)
+				return costumes;
+			const auto directory = std::filesystem::path(executable).parent_path() / L"nativePCx64/chr/archive";
+			for (int fighter = 1; fighter < static_cast<int>(costumes.size()); ++fighter)
+			{
+				wchar_t name[16];
+				swprintf_s(name, L"%04d_%02d.arc", fighter, TrainingShortcut::AlternateColor);
+				const auto attributes = GetFileAttributesW((directory / name).c_str());
+				costumes[fighter] = attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+			}
+			return costumes;
+		}();
+		return InRoster(id) && available[id];
+	}
+
+	bool HasAvailableColors(const TrainingShortcut::TeamPicks& picks)
+	{
+		return std::all_of(picks.begin(), picks.end(), [](const auto& pick)
+		{
+			return pick.color != TrainingShortcut::AlternateColor || HasAlternateCostume(pick.id);
+		});
+	}
+
+	bool ValidPresetColor(int color)
+	{
+		return color == TrainingShortcut::AlternateColor
+			|| (color >= TrainingShortcut::AutomaticColor && color < TrainingShortcut::BaseColorCount);
+	}
+
 	bool ValidPicks(const TrainingShortcut::TeamPicks& picks)
 	{
 		for (int slot = 0; slot < SlotCount; ++slot)
 		{
 			const auto pick = picks[slot];
-			if (!InRoster(pick.id) || pick.assist < 0 || pick.assist >= IM_ARRAYSIZE(AssistTypes))
+			if (!InRoster(pick.id) || pick.assist < 0 || pick.assist >= IM_ARRAYSIZE(AssistTypes)
+				|| !ValidPresetColor(pick.color))
 				return false;
 			for (int previous = slot / SlotsPerTeam * SlotsPerTeam; previous < slot; ++previous)
 			{
@@ -468,7 +552,7 @@ namespace
 	{
 		TrainingShortcut::TeamPicks picks{};
 		for (int slot = 0; slot < SlotCount; ++slot)
-			picks[slot] = { quickDraft[slot].id, quickDraft[slot].assist };
+			picks[slot] = { quickDraft[slot].id, quickDraft[slot].assist, quickDraft[slot].color };
 		return picks;
 	}
 
@@ -491,19 +575,79 @@ namespace
 		return quickPresetFolder / (filename + L".preset");
 	}
 
+	bool ValidQuickExercise(const QuickExercise& exercise)
+	{
+		return std::all_of(exercise.reactions.begin(), exercise.reactions.end(), [](const DummyReaction& reaction)
+		{
+			return !reaction.slot && reaction.delay >= 0 && reaction.delay <= MaxDummyReactionDelay
+				&& (reaction.move == NoDummyMove || IsDummyMoveValid(reaction));
+		});
+	}
+
+	bool ReadQuickExercise(std::istream& input, QuickExercise& exercise)
+	{
+		if (!(input >> exercise.resetPosition) || exercise.resetPosition < 0
+			|| exercise.resetPosition >= static_cast<int>(QuickResetChoices.size()))
+			return false;
+		for (auto& reaction : exercise.reactions)
+		{
+			std::string notation;
+			if (!(input >> reaction.move >> reaction.delay >> std::quoted(notation))
+				|| notation.size() >= DummyInputCapacity || notation.find('\0') != std::string::npos
+				|| (reaction.move != CustomDummyMove && !notation.empty()))
+				return false;
+			std::copy(notation.begin(), notation.end(), reaction.customInput.begin());
+			reaction.customDraft = reaction.customInput;
+		}
+		return ValidQuickExercise(exercise);
+	}
+
 	bool ReadPreset(const std::filesystem::path& path, QuickPreset& preset)
 	{
 		std::ifstream input(path, std::ios::binary);
 		int version = 0;
-		if (!(input >> version >> std::quoted(preset.name) >> preset.stage) || version != PresetVersion
-			|| !ValidPresetName(preset.name) || preset.stage < 0 || preset.stage >= TrainingShortcut::StageCount)
+		const auto reject = [&](const char* reason)
+		{
+			Log(0, "presets: read failed version=%d stage=%d reason=%s", version, preset.stage, reason);
 			return false;
+		};
+		if (!input.is_open())
+			return reject("open");
+		if (!(input >> version >> std::quoted(preset.name) >> preset.stage)
+			|| (version != TeamPresetVersion && version != ExercisePresetVersion && version != ColorPresetVersion)
+			|| !ValidPresetName(preset.name) || preset.stage < 0 || preset.stage >= TrainingShortcut::StageCount)
+			return reject("header");
 		for (auto& pick : preset.picks)
 		{
 			if (!(input >> pick.id >> pick.assist))
-				return false;
+				return reject("fighter or assist");
+			if (version == ColorPresetVersion && !(input >> pick.color))
+				return reject("color");
 		}
-		return (input >> std::ws).eof() && ValidPicks(preset.picks);
+		int includeExercise = version == ExercisePresetVersion;
+		if (version == ColorPresetVersion && (!(input >> includeExercise) || (includeExercise != 0 && includeExercise != 1)))
+			return reject("exercise flag");
+		if (includeExercise && !ReadQuickExercise(input, preset.exercise.emplace()))
+			return reject("exercise settings");
+		if (!(input >> std::ws).eof())
+			return reject("trailing data");
+		return ValidPicks(preset.picks) || reject("invalid team selection");
+	}
+
+	void WritePreset(std::ostream& output, const QuickPreset& preset)
+	{
+		output << ColorPresetVersion << ' ' << std::quoted(preset.name) << ' ' << preset.stage;
+		for (const auto& pick : preset.picks)
+			output << ' ' << pick.id << ' ' << pick.assist << ' ' << pick.color;
+		output << ' ' << static_cast<int>(preset.exercise.has_value());
+		if (preset.exercise)
+		{
+			output << ' ' << preset.exercise->resetPosition;
+			for (const auto& reaction : preset.exercise->reactions)
+				output << ' ' << reaction.move << ' ' << reaction.delay << ' '
+					<< std::quoted(reaction.move == CustomDummyMove ? reaction.customInput.data() : "");
+		}
+		output << '\n';
 	}
 
 	void RefreshQuickPresets()
@@ -515,6 +659,8 @@ namespace
 		{
 			quickPresetFolder.clear();
 			quickPresetStatus = "PRESET_DIR_MISSING";
+			Log(0, "presets: local app data unavailable (Windows error %lu)",
+				length ? ERROR_INSUFFICIENT_BUFFER : GetLastError());
 			return;
 		}
 		quickPresetFolder = std::filesystem::path(localAppData) / L"UMVC3TrainingToolsInt" / L"QuickTraining";
@@ -523,24 +669,33 @@ namespace
 		if (error)
 		{
 			quickPresetStatus = "PRESET_DIR_OPEN";
+			Log(0, "presets: create directory failed error=%d", error.value());
 			return;
 		}
 
 		quickPresetStatus = "";
 		const std::filesystem::directory_iterator end;
+		unsigned rejected = 0;
 		for (std::filesystem::directory_iterator entry(quickPresetFolder, error); !error && entry != end; entry.increment(error))
 		{
 			const auto& path = entry->path();
 			if (path.extension() != L".preset")
 				continue;
 			QuickPreset preset;
-			if (ReadPreset(path, preset) && path.filename() == PresetPath(preset.name).filename())
+			const bool read = ReadPreset(path, preset);
+			if (read && path.filename() == PresetPath(preset.name).filename())
 				quickPresets.push_back(std::move(preset));
 			else
+			{
+				if (read)
+					Log(0, "presets: file name does not match preset identifier");
+				++rejected;
 				quickPresetStatus = "PRESET_READ_FAILED";
+			}
 		}
 		if (error)
 			quickPresetStatus = "PRESET_LIST_FAILED";
+		Log(0, "presets: list complete loaded=%zu rejected=%u error=%d", quickPresets.size(), rejected, error.value());
 		std::sort(quickPresets.begin(), quickPresets.end(), [](const QuickPreset& left, const QuickPreset& right)
 		{
 			return left.name < right.name;
@@ -560,7 +715,10 @@ namespace
 				FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
 		}
 		if (file == INVALID_HANDLE_VALUE)
+		{
+			Log(0, "presets: edit lock unavailable error=%lu", quickPresetFolder.empty() ? ERROR_PATH_NOT_FOUND : GetLastError());
 			quickPresetStatus = "PRESET_EDIT_FAILED";
+		}
 		return { file == INVALID_HANDLE_VALUE ? nullptr : file, CloseHandle };
 	}
 
@@ -571,11 +729,24 @@ namespace
 			return true;
 		RefreshQuickPresets();
 		quickPresetStatus = "PRESET_CHANGED";
+		Log(0, "presets: edit cancelled because the selected file changed");
 		return false;
 	}
 
-	void SaveQuickPreset(bool update = false)
+	void LoadQuickPresetDraft(const QuickPreset& preset)
 	{
+		for (int slot = 0; slot < SlotCount; ++slot)
+			quickDraft[slot] = { slot, preset.picks[slot].id, preset.picks[slot].assist, preset.picks[slot].color };
+		quickStage = preset.stage;
+		useQuickExercise = preset.exercise.has_value();
+		quickExercise = preset.exercise.value_or(QuickExercise{});
+		quickSetupStatus = "";
+	}
+
+	void SaveQuickPreset(QuickPreset preset, bool update, bool fromMatch = false)
+	{
+		Log(0, "presets: %s requested source=%s stage=%d exercise=%d", update ? "update" : "save",
+			fromMatch ? "training tab" : "F4", preset.stage, preset.exercise.has_value());
 		std::string_view name = quickPresetName;
 		const auto first = name.find_first_not_of(' ');
 		if (first != std::string_view::npos)
@@ -585,13 +756,29 @@ namespace
 		if (!ValidPresetName(name))
 		{
 			quickPresetStatus = "PRESET_NAME_INVALID";
+			Log(0, "presets: save rejected reason=invalid name");
 			return;
 		}
-		const QuickPreset preset{ std::string(name), QuickPicks(), quickStage };
+		preset.name = name;
 		if (!ValidPicks(preset.picks))
 		{
 			quickPresetStatus = "QUICK_COMPLETE_TEAMS";
+			Log(0, "presets: save rejected reason=invalid team selection");
 			return;
+		}
+		if (preset.exercise)
+		{
+			if (!ValidQuickExercise(*preset.exercise))
+			{
+				quickPresetStatus = "QUICK_EXERCISE_INVALID";
+				Log(0, "presets: save rejected reason=invalid exercise");
+				return;
+			}
+			for (auto& reaction : preset.exercise->reactions)
+			{
+				const auto terminator = std::find(reaction.customInput.begin(), reaction.customInput.end(), '\0');
+				std::fill(terminator, reaction.customInput.end(), '\0');
+			}
 		}
 
 		const auto lock = LockQuickPresets();
@@ -607,34 +794,38 @@ namespace
 		wchar_t temporary[MAX_PATH]{};
 		if (!GetTempFileNameW(quickPresetFolder.c_str(), L"QTP", 0, temporary))
 		{
+			Log(0, "presets: temporary file creation failed error=%lu", GetLastError());
 			quickPresetStatus = "PRESET_SAVE_FAILED";
 			return;
 		}
 		std::ofstream output(temporary, std::ios::binary);
-		output << PresetVersion << ' ' << std::quoted(preset.name) << ' ' << preset.stage;
-		for (const auto& pick : preset.picks)
-			output << ' ' << pick.id << ' ' << pick.assist;
-		output << '\n';
+		WritePreset(output, preset);
 		output.close();
 		if (output && MoveFileExW(temporary, path.c_str(), flags))
 		{
 			if (rename && !DeleteFileW(previous.c_str()))
 			{
+				const auto error = GetLastError();
 				const bool restored = DeleteFileW(path.c_str()) != FALSE;
+				Log(0, "presets: rename failed error=%lu restored=%d", error, restored);
 				RefreshQuickPresets();
 				quickPresetStatus = restored ? "PRESET_RENAME_RESTORED"
 					: "PRESET_RENAME_DUPLICATE";
 				return;
 			}
 			selectedQuickPreset = preset;
+			if (fromMatch)
+				LoadQuickPresetDraft(preset);
 			std::snprintf(quickPresetName, sizeof(quickPresetName), "%s", preset.name.c_str());
 			RefreshQuickPresets();
 			if (!*quickPresetStatus)
 				quickPresetStatus = update ? "PRESET_UPDATED" : "PRESET_SAVED";
+			Log(0, "presets: %s complete version=%d renamed=%d", update ? "update" : "save", ColorPresetVersion, rename);
 			return;
 		}
 
 		const auto error = output ? GetLastError() : ERROR_WRITE_FAULT;
+		Log(0, "presets: save failed error=%lu write_complete=%d", error, static_cast<bool>(output));
 		DeleteFileW(temporary);
 		quickPresetStatus = error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS
 			? "PRESET_DUPLICATE" : "PRESET_SAVE_FAILED";
@@ -650,6 +841,7 @@ namespace
 			return;
 		if (!DeleteFileW(path.c_str()))
 		{
+			Log(0, "presets: delete failed error=%lu", GetLastError());
 			quickPresetStatus = "PRESET_DELETE_FAILED";
 			return;
 		}
@@ -658,10 +850,12 @@ namespace
 		RefreshQuickPresets();
 		if (!*quickPresetStatus)
 			quickPresetStatus = "PRESET_DELETED";
+		Log(0, "presets: delete complete");
 	}
 
-	void DrawQuickPresets()
+	bool DrawQuickPresetSelector(const char* source)
 	{
+		bool changed = false;
 		ImGui::BeginDisabled(quickPresets.empty());
 		const char* preview = selectedQuickPreset ? selectedQuickPreset->name.c_str() : UiText("PRESET_LOAD");
 		if (ImGui::BeginCombo("##QuickPreset", preview))
@@ -673,11 +867,10 @@ namespace
 				{
 					selectedQuickPreset = preset;
 					std::snprintf(quickPresetName, sizeof(quickPresetName), "%s", preset.name.c_str());
-					for (int slot = 0; slot < SlotCount; ++slot)
-						quickDraft[slot] = { slot, preset.picks[slot].id, preset.picks[slot].assist };
-					quickStage = preset.stage;
-					quickSetupStatus = "";
+					LoadQuickPresetDraft(preset);
 					quickPresetStatus = "PRESET_LOADED";
+					Log(0, "presets: selected source=%s stage=%d exercise=%d", source, preset.stage, preset.exercise.has_value());
+					changed = true;
 				}
 				if (selected)
 					ImGui::SetItemDefaultFocus();
@@ -685,14 +878,25 @@ namespace
 			ImGui::EndCombo();
 		}
 		ImGui::EndDisabled();
+		return changed;
+	}
+
+	template <class SavePreset>
+	void DrawQuickPresetActions(SavePreset savePreset, bool canSave = true)
+	{
 		ImGui::InputTextWithHint("##QuickPresetName", UiText("PRESET_NAME"), quickPresetName, sizeof(quickPresetName));
+		ImGui::BeginDisabled(!canSave);
 		if (ImGui::Button(selectedQuickPreset ? UiText("PRESET_SAVE_NEW") : UiText("PRESET_SAVE")))
-			SaveQuickPreset();
+			savePreset(false);
 		if (selectedQuickPreset)
 		{
 			ImGui::SameLine();
 			if (ImGui::Button(UiText("PRESET_UPDATE")))
-				SaveQuickPreset(true);
+				savePreset(true);
+		}
+		ImGui::EndDisabled();
+		if (selectedQuickPreset)
+		{
 			ImGui::SameLine();
 			if (ImGui::Button(UiText("PRESET_DELETE")))
 				ImGui::OpenPopup(Localizer::UiLabel("PRESET_DELETE_TITLE").c_str());
@@ -738,7 +942,8 @@ namespace
 		for (int slot = 0; slot < SlotCount; ++slot)
 		{
 			if (left[slot].side != right[slot].side || left[slot].id != right[slot].id
-				|| left[slot].classId != right[slot].classId || left[slot].assist != right[slot].assist)
+				|| left[slot].classId != right[slot].classId || left[slot].assist != right[slot].assist
+				|| left[slot].color != right[slot].color)
 				return false;
 		}
 		return true;
@@ -746,9 +951,10 @@ namespace
 
 	void LogTeams(unsigned attempt, const char* label, const Teams& teams)
 	{
-		Log(attempt, "%s (fighter/assist) P1=[%d/%d,%d/%d,%d/%d] P2=[%d/%d,%d/%d,%d/%d]", label,
-			teams[0].id, teams[0].assist, teams[1].id, teams[1].assist, teams[2].id, teams[2].assist,
-			teams[3].id, teams[3].assist, teams[4].id, teams[4].assist, teams[5].id, teams[5].assist);
+		Log(attempt, "%s (fighter/assist/color) P1=[%d/%d/%d,%d/%d/%d,%d/%d/%d] P2=[%d/%d/%d,%d/%d/%d,%d/%d/%d]", label,
+			teams[0].id, teams[0].assist, teams[0].color, teams[1].id, teams[1].assist, teams[1].color,
+			teams[2].id, teams[2].assist, teams[2].color, teams[3].id, teams[3].assist, teams[3].color,
+			teams[4].id, teams[4].assist, teams[4].color, teams[5].id, teams[5].assist, teams[5].color);
 	}
 
 	void LogClasses(unsigned attempt, const char* label, const Classes& classes)
@@ -767,6 +973,8 @@ namespace
 		LogClasses(attempt, label, classes);
 		Log(attempt, "%s assists P1=[%d,%d,%d] P2=[%d,%d,%d]", label,
 			teams[0].assist, teams[1].assist, teams[2].assist, teams[3].assist, teams[4].assist, teams[5].assist);
+		Log(attempt, "%s colors P1=[%d,%d,%d] P2=[%d,%d,%d]", label,
+			teams[0].color, teams[1].color, teams[2].color, teams[3].color, teams[4].color, teams[5].color);
 	}
 
 	DWORD WINAPI WatchRestart(void* argument)
@@ -810,54 +1018,143 @@ namespace
 		return 0;
 	}
 
-	void DrawTeamDraft(std::array<DraftSlot, SlotCount>& slots)
+	void DrawColorChoice(DraftSlot& fighter, bool allowAutomatic)
 	{
-		for (int slot = 0; slot < SlotCount; ++slot)
+		auto& color = fighter.color;
+		const bool hasAlternate = HasAlternateCostume(fighter.id);
+		const char* automaticLabel = UiText("TEAM_COLOR_AUTO");
+		auto preview = color >= 0 && color < TrainingShortcut::BaseColorCount
+			? std::to_string(color + 1) : std::string(allowAutomatic ? automaticLabel : UiText("TEAM_COLOR_CURRENT"));
+		if (color == TrainingShortcut::AlternateColor)
+			preview = UiText(hasAlternate ? "TEAM_COLOR_ALT" : "TEAM_COLOR_ALT_MISSING");
+		if (ImGui::BeginCombo(UiText("TEAM_COLOR"), preview.c_str()))
 		{
-			const int position = slot % SlotsPerTeam;
-			if (position == 0)
-				ImGui::SeparatorText(slot == 0 ? UiText("TEAM_PLAYER1") : UiText("TEAM_PLAYER2"));
-			ImGui::PushID(slot);
-			char label[32];
-			std::snprintf(label, sizeof(label), UiText("TEAM_SLOT"), position + 1);
-			const int current = slots[slot].id;
-			if (ImGui::BeginCombo(label, Roster[current].name))
+			if (allowAutomatic && ImGui::Selectable(automaticLabel, color == TrainingShortcut::AutomaticColor))
+				color = TrainingShortcut::AutomaticColor;
+			for (int index = 0; index < TrainingShortcut::BaseColorCount; ++index)
 			{
-				for (int id : FighterDisplayOrder)
-				{
-					if (ImGui::Selectable(Roster[id].name, id == current))
-						slots[slot].id = id;
-					if (id == current)
-						ImGui::SetItemDefaultFocus();
-				}
-				ImGui::EndCombo();
+				const bool selected = index == color;
+				if (ImGui::Selectable(std::to_string(index + 1).c_str(), selected))
+					color = index;
+				if (selected)
+					ImGui::SetItemDefaultFocus();
 			}
-			ImGui::SameLine();
-			ImGui::BeginDisabled(position == 0);
-			if (ImGui::ArrowButton("Up", ImGuiDir_Up))
-				std::swap(slots[slot], slots[slot - 1]);
-			ImGui::EndDisabled();
-			ImGui::SameLine();
-			ImGui::BeginDisabled(position == SlotsPerTeam - 1);
-			if (ImGui::ArrowButton("Down", ImGuiDir_Down))
-				std::swap(slots[slot], slots[slot + 1]);
-			ImGui::EndDisabled();
-			auto& assist = slots[slot].assist;
-			const auto& names = Roster[slots[slot].id].assists;
-			const bool knownAssist = assist >= 0 && assist < IM_ARRAYSIZE(AssistTypes);
-			if (ImGui::BeginCombo(UiText("TEAM_ASSIST"), knownAssist ? names[assist] : UiText("TEAM_UNKNOWN_ASSIST")))
+			if (hasAlternate)
 			{
-				for (int type = 0; type < IM_ARRAYSIZE(AssistTypes); ++type)
+				const bool selected = color == TrainingShortcut::AlternateColor;
+				if (ImGui::Selectable(UiText("TEAM_COLOR_ALT"), selected))
+					color = TrainingShortcut::AlternateColor;
+				if (selected)
+					ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+	}
+
+	void DrawResetChoice(int& position)
+	{
+		if (!ImGui::BeginCombo(UiText("QUICK_RESET_POSITION"), UiText(QuickResetChoices[position].first)))
+			return;
+		for (int index = 0; index < static_cast<int>(QuickResetChoices.size()); ++index)
+		{
+			const bool selected = index == position;
+			if (ImGui::Selectable(UiText(QuickResetChoices[index].first), selected))
+				position = index;
+			if (selected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	void DrawFighterOptions(DraftSlot& fighter, bool quickSetup)
+	{
+		if (ImGui::BeginCombo(UiText("TEAM_FIGHTER"), Roster[fighter.id].name))
+		{
+			for (int id : FighterDisplayOrder)
+			{
+				const bool selected = id == fighter.id;
+				if (ImGui::Selectable(Roster[id].name, selected) && !selected)
 				{
-					char option[64];
-					std::snprintf(option, sizeof(option), "%s - %s", UiText(AssistTypes[type]), names[type]);
-					const bool selected = type == assist;
-					if (ImGui::Selectable(option, selected))
-						assist = type;
-					if (selected)
-						ImGui::SetItemDefaultFocus();
+					fighter.id = id;
+					fighter.color = 0;
 				}
-				ImGui::EndCombo();
+				if (selected)
+					ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+		const auto& names = Roster[fighter.id].assists;
+		const bool knownAssist = fighter.assist >= 0 && fighter.assist < IM_ARRAYSIZE(AssistTypes);
+		if (ImGui::BeginCombo(UiText("TEAM_ASSIST"), knownAssist ? names[fighter.assist] : UiText("TEAM_UNKNOWN_ASSIST")))
+		{
+			for (int type = 0; type < IM_ARRAYSIZE(AssistTypes); ++type)
+			{
+				char option[64];
+				std::snprintf(option, sizeof(option), "%s - %s", UiText(AssistTypes[type]), names[type]);
+				const bool selected = type == fighter.assist;
+				if (ImGui::Selectable(option, selected))
+					fighter.assist = type;
+				if (selected)
+					ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+		DrawColorChoice(fighter, quickSetup);
+	}
+
+	void DrawTeamDraft(std::array<DraftSlot, SlotCount>& slots, bool quickSetup = false)
+	{
+		const float buttonGap = ImGui::GetStyle().ItemInnerSpacing.x;
+		const float orderWidth = 2.0f * ImGui::GetFrameHeight() + buttonGap;
+		for (int first = 0; first < SlotCount; first += SlotsPerTeam)
+		{
+			ImGui::SeparatorText(UiText(first == 0 ? "TEAM_PLAYER1" : "TEAM_PLAYER2"));
+			ImGui::PushID(first);
+			if (ImGui::BeginTable("##TeamList", 2))
+			{
+				ImGui::TableSetupColumn("##Fighter", ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn("##Order", ImGuiTableColumnFlags_WidthFixed, orderWidth);
+				int moveFrom = first;
+				int moveTo = first;
+				for (int position = 0; position < SlotsPerTeam; ++position)
+				{
+					const int slot = first + position;
+					auto& fighter = slots[slot];
+					ImGui::PushID(fighter.source);
+					ImGui::TableNextRow();
+					ImGui::TableNextColumn();
+					const bool expanded = ImGui::TreeNodeEx("##FighterDetails",
+						ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding,
+						"%s", Roster[fighter.id].name);
+					ImGui::TableNextColumn();
+					ImGui::BeginDisabled(position == 0);
+					if (ImGui::ArrowButton("Up", ImGuiDir_Up))
+					{
+						moveFrom = slot;
+						moveTo = slot - 1;
+					}
+					ImGui::EndDisabled();
+					ImGui::SameLine(0.0f, buttonGap);
+					ImGui::BeginDisabled(position == SlotsPerTeam - 1);
+					if (ImGui::ArrowButton("Down", ImGuiDir_Down))
+					{
+						moveFrom = slot;
+						moveTo = slot + 1;
+					}
+					ImGui::EndDisabled();
+					if (expanded)
+					{
+						ImGui::TableNextRow();
+						ImGui::TableNextColumn();
+						ImGui::Indent();
+						DrawFighterOptions(fighter, quickSetup);
+						ImGui::Unindent();
+					}
+					ImGui::PopID();
+				}
+				ImGui::EndTable();
+				if (moveFrom != moveTo)
+					std::swap(slots[moveFrom], slots[moveTo]);
 			}
 			ImGui::PopID();
 		}
@@ -867,20 +1164,52 @@ namespace
 	{
 		draftFrom = match;
 		for (int slot = 0; slot < SlotCount; ++slot)
-			draft[slot] = { slot, match.teams[slot].id, match.teams[slot].assist };
+			draft[slot] = { slot, match.teams[slot].id, match.teams[slot].assist, match.teams[slot].color };
 	}
 
-	void Apply(const Match& shown)
+	std::array<DraftSlot, SlotCount> DraftFromPreset(const Match& match, const QuickPreset& preset)
+	{
+		std::array<DraftSlot, SlotCount> selection{};
+		for (int slot = 0; slot < SlotCount; ++slot)
+		{
+			const auto& pick = preset.picks[slot];
+			const int first = slot / SlotsPerTeam * SlotsPerTeam;
+			const auto begin = match.teams.begin() + first;
+			const auto end = begin + SlotsPerTeam;
+			const auto existing = std::find_if(begin, end, [&](const Selection& fighter) { return fighter.id == pick.id; });
+			const int source = existing == end ? slot : static_cast<int>(existing - match.teams.begin());
+			const int color = pick.color != TrainingShortcut::AutomaticColor ? pick.color
+				: (existing == end ? 0 : existing->color);
+			selection[slot] = { source, pick.id, pick.assist, color };
+		}
+		return selection;
+	}
+
+	void ApplyExercise(uintptr_t action, const QuickExercise& exercise)
+	{
+		quickExerciseAction = action;
+		quickExerciseReset = QuickResetChoices[exercise.resetPosition].second;
+		{
+			const std::lock_guard lock(RecordingMutex);
+			for (size_t index = 0; index < DummyReactionSettings.size(); ++index)
+			{
+				auto& reaction = *DummyReactionSettings[index];
+				reaction = exercise.reactions[index];
+				reaction.customDraft = reaction.customInput;
+			}
+		}
+		Log(0, "exercise: applied position=%d reactions (move/delay) hit=%d/%d block=%d/%d wakeup=%d/%d incoming=%d/%d",
+			exercise.resetPosition, exercise.reactions[0].move, exercise.reactions[0].delay, exercise.reactions[1].move,
+			exercise.reactions[1].delay, exercise.reactions[2].move, exercise.reactions[2].delay,
+			exercise.reactions[3].move, exercise.reactions[3].delay);
+	}
+
+	void Apply(const Match& shown, const std::array<DraftSlot, SlotCount>& selection, const QuickPreset* preset = nullptr)
 	{
 		const unsigned attempt = ++attemptCount;
-		Log(attempt, "Apply and reload clicked");
-		if (!SupportsTeamReload())
-		{
-			status = "TEAM_UNAVAILABLE";
-			Log(attempt, "native reload signature mismatch");
-			return;
-		}
-		if (recording || recordingP1 || recordingP2 || replaying || replayingP1 || replayingP2)
+		Log(attempt, "apply requested source=%s preset_stage=%d exercise=%d", preset ? "preset tab" : "team editor",
+			preset ? preset->stage : -1, preset && preset->exercise.has_value());
+		if (recording || recordingP1 || recordingP2 || replaying || replayingP1 || replayingP2 || IsDummyControllerRecording())
 		{
 			status = "TEAM_STOP_RECORDING";
 			Log(attempt, "blocked by active recording or playback");
@@ -906,11 +1235,11 @@ namespace
 		uint32_t reloadFlags = 0;
 		for (int slot = 0; slot < SlotCount; ++slot)
 		{
-			const auto edit = draft[slot];
+			const auto edit = selection[slot];
 			const int first = (slot / SlotsPerTeam) * SlotsPerTeam;
 			for (int other = first; other < slot; ++other)
 			{
-				if (edit.id == draft[other].id)
+				if (edit.id == selection[other].id)
 				{
 					status = "TEAM_DISTINCT";
 					Log(attempt, "duplicate fighter id=%d side=%d", edit.id, slot / SlotsPerTeam + 1);
@@ -921,6 +1250,7 @@ namespace
 			proposed[slot].id = edit.id;
 			proposed[slot].classId = ClassId(Roster[edit.id].gameClass);
 			proposed[slot].assist = edit.assist;
+			proposed[slot].color = edit.color;
 			if (proposed[slot] != current.teams[slot])
 				reloadFlags |= slot < SlotsPerTeam ? ReloadPlayer1 : ReloadPlayer2;
 			for (int original = 0; original < SlotCount; ++original)
@@ -935,8 +1265,26 @@ namespace
 
 		if (!reloadFlags)
 		{
+			Log(attempt, "team selection unchanged");
 			status = "TEAM_NO_CHANGE";
-			Log(attempt, "no selection changes");
+			if (preset)
+			{
+				status = "PRESET_APPLIED";
+				if (preset->exercise)
+				{
+					const auto& exercise = *preset->exercise;
+					if (TrainingTeamEditor::RequestTrainingRestart(QuickResetChoices[exercise.resetPosition].second))
+						ApplyExercise(current.action, exercise);
+					else
+						status = "TEAM_WAIT";
+				}
+			}
+			return;
+		}
+		if (!SupportsTeamReload())
+		{
+			status = "TEAM_UNAVAILABLE";
+			Log(attempt, "native reload signature mismatch");
 			return;
 		}
 
@@ -974,6 +1322,11 @@ namespace
 		}
 
 		trial = { current, proposed, loaded, expected, GetTickCount64(), true, false, attempt, reloadFlags };
+		if (preset)
+		{
+			trial.successStatus = "PRESET_APPLIED";
+			trial.exercise = preset->exercise;
+		}
 		status = "TEAM_RELOAD_WAIT";
 		if (logAvailable)
 		{
@@ -990,6 +1343,23 @@ namespace
 			}
 		}
 	}
+
+	void BeginRestart(const Match& match, std::optional<TrainingTeamEditor::XPositions> positions, const char* source,
+		bool initialPlacement = false)
+	{
+		pendingRestart = { match.settings, match.action, 0, positions, GetTickCount64(), false, initialPlacement };
+		const auto target = positions.value_or(TrainingTeamEditor::XPositions{ p1Pos, p2Pos });
+		Log(0, "restart: started source=%s target_p1=%.1f target_p2=%.1f", source, target.p1, target.p2);
+	}
+
+	void LogRestartWait(const char* reason)
+	{
+		if (!pendingRestart.waitLogged && GetTickCount64() - pendingRestart.started >= 2000)
+		{
+			pendingRestart.waitLogged = true;
+			Log(0, "restart: still waiting reason=%s", reason);
+		}
+	}
 }
 
 void TrainingTeamEditor::OpenQuickSetup()
@@ -1001,10 +1371,28 @@ void TrainingTeamEditor::OpenQuickSetup()
 bool TrainingTeamEditor::DrawQuickSetup()
 {
 	ImGui::SeparatorText(UiText("QUICK_TITLE"));
-	DrawQuickPresets();
+	DrawQuickPresetSelector("F4");
 	ImGui::Combo(UiText("QUICK_STAGE"), &quickStage, Stages.data(), static_cast<int>(Stages.size()));
-	DrawTeamDraft(quickDraft);
-	ImGui::Checkbox(UiText("QUICK_DIRECT_LAUNCH"), &quickDirectLaunch);
+	DrawTeamDraft(quickDraft, true);
+	ImGui::Checkbox(UiText("QUICK_EXERCISE"), &useQuickExercise);
+	if (useQuickExercise && ImGui::TreeNode(Localizer::UiLabel("QUICK_EXERCISE_SETTINGS").c_str()))
+	{
+		DrawResetChoice(quickExercise.resetPosition);
+		for (size_t index = 0; index < QuickReactionLabels.size(); ++index)
+			DrawDummyReaction(QuickReactionLabels[index], quickExercise.reactions[index], false);
+		ImGui::TreePop();
+	}
+	DrawQuickPresetActions([](bool update)
+	{
+		SaveQuickPreset({ {}, QuickPicks(), quickStage, useQuickExercise ? std::optional{ quickExercise } : std::nullopt }, update);
+	});
+	if (TrainingShortcut::CanLaunchDirectly())
+	{
+		if (TrainingShortcut::CanLaunchViaNativeMenus())
+			ImGui::Checkbox(UiText("QUICK_DIRECT_LAUNCH"), &quickDirectLaunch);
+		else
+			ImGui::TextWrapped("%s", UiText("QUICK_DIRECT_ONLY"));
+	}
 	if (*quickSetupStatus)
 		ImGui::TextWrapped("%s", UiText(quickSetupStatus));
 
@@ -1016,8 +1404,21 @@ bool TrainingTeamEditor::DrawQuickSetup()
 			TraceQuickShortcut("Start Training rejected: invalid fighter or assist selection");
 			quickSetupStatus = "QUICK_COMPLETE_TEAMS";
 		}
+		else if (useQuickExercise && !ValidQuickExercise(quickExercise))
+		{
+			quickSetupStatus = "QUICK_EXERCISE_INVALID";
+			Log(0, "quick training: launch rejected reason=invalid exercise");
+		}
+		else if (!HasAvailableColors(picks))
+		{
+			quickSetupStatus = "QUICK_ALT_UNAVAILABLE";
+			Log(0, "quick training: launch rejected reason=alternate costume missing");
+		}
 		else if (TrainingShortcut::StartTraining(picks, quickStage, quickDirectLaunch))
+		{
+			queuedExercise = useQuickExercise ? std::optional{ quickExercise } : std::nullopt;
 			return true;
+		}
 		else
 			quickSetupStatus = "QUICK_RETURN_MAIN";
 	}
@@ -1025,40 +1426,82 @@ bool TrainingTeamEditor::DrawQuickSetup()
 	return ImGui::Button(UiText("UI_CANCEL"));
 }
 
+void TrainingTeamEditor::ApplyQuickExercise(uintptr_t action)
+{
+	const auto exercise = std::exchange(queuedExercise, std::nullopt);
+	if (exercise)
+	{
+		ApplyExercise(action, *exercise);
+		Match match;
+		if (ReadMatch(match) && match.action == action)
+			BeginRestart(match, quickExerciseReset, "quick exercise initial position", true);
+		TraceQuickShortcut("exercise applied: reset position and dummy reactions ready");
+	}
+	else
+		quickExerciseAction = 0;
+}
+
+std::optional<TrainingTeamEditor::XPositions> TrainingTeamEditor::QuickResetPositions()
+{
+	if (quickExerciseAction && quickExerciseAction == GetFightingAction())
+		return quickExerciseReset;
+	return std::nullopt;
+}
+
 bool TrainingTeamEditor::RequestTrainingRestart(std::optional<XPositions> positions)
 {
 	Match match{};
 	ActionState action{};
-	if (!ReadMatch(match) || !ReadAction(match.action, action) || !IsFighting(action) || (action.flags & ReloadTeams)
-		|| !Write(match.action + RestartOffset, RestartTraining))
+	if (!ReadMatch(match) || !ReadAction(match.action, action) || !IsFighting(action) || (action.flags & ReloadTeams))
+	{
+		Log(0, "restart: rejected step=%d next=%d restart=%u flags=0x%08X", action.step, action.nextStep, action.restart, action.flags);
 		return false;
+	}
+	if (!Write(match.action + RestartOffset, RestartTraining))
+	{
+		Log(0, "restart: request write failed error=%lu", GetLastError());
+		return false;
+	}
 
-	pendingRestart = { match.settings, match.action, 0, positions };
+	if (!positions && quickExerciseAction == match.action)
+		positions = quickExerciseReset;
+	BeginRestart(match, positions, "tool request");
 	return true;
 }
 
 void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 {
-	if (!watchNativeRestart && !pendingRestart.action)
+	if (!watchNativeRestart && !pendingRestart.action && !quickExerciseAction)
 		return;
 
 	Match match{};
 	ActionState action{};
 	if (!ReadMatch(match) || !ReadAction(match.action, action))
 	{
+		if (pendingRestart.action)
+			Log(0, "restart: cancelled because the match is unavailable");
 		pendingRestart = {};
+		quickExerciseAction = 0;
 		return;
 	}
-	if (pendingRestart.action != match.action || pendingRestart.settings != match.settings)
+	if (quickExerciseAction != match.action)
+		quickExerciseAction = 0;
+	if (pendingRestart.action && (pendingRestart.action != match.action || pendingRestart.settings != match.settings))
+	{
+		Log(0, "restart: cancelled because the match changed");
 		pendingRestart = {};
-	if (watchNativeRestart && action.restart && !pendingRestart.action)
-		pendingRestart = { match.settings, match.action };
+	}
+	if ((watchNativeRestart || quickExerciseAction) && action.restart && !pendingRestart.action)
+	{
+		BeginRestart(match, quickExerciseAction ? std::optional{ quickExerciseReset } : std::nullopt, "native game");
+	}
 	if (!pendingRestart.action)
 		return;
 
 	if (!IsFighting(action) || (action.flags & ReloadTeams))
 	{
 		pendingRestart.readyAt = 0;
+		LogRestartWait("battle restart or team reload in progress");
 		return;
 	}
 
@@ -1068,15 +1511,24 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 
 	LoadedTeams loaded{};
 	if (!ReadLoadedTeams(loaded) || !CheckTheMode())
+	{
+		LogRestartWait("teams not ready");
 		return;
+	}
 	GetMainPointers();
 	if (sAction != match.action || sBattleSetting != match.settings
 		|| !Player1TeamTable || !Player2TeamTable || !PointerToGameSpeedA)
+	{
+		LogRestartWait("battle settings not ready");
 		return;
+	}
 	GetPlayerData();
 	if (!P1Character1Data || !P1Character2Data || !P1Character3Data
 		|| !P2Character1Data || !P2Character2Data || !P2Character3Data)
+	{
+		LogRestartWait("fighter data not ready");
 		return;
+	}
 
 	if (!pendingRestart.readyAt)
 	{
@@ -1087,11 +1539,19 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 		*(float*)(P2Character1Data + 0x50) = positions.p2;
 		*(float*)(P2Character2Data + 0x50) = positions.p2;
 		*(float*)(P2Character3Data + 0x50) = positions.p2;
+		Log(0, "restart: positions applied p1=%.1f p2=%.1f initial_placement=%d", positions.p1, positions.p2,
+			pendingRestart.initialPlacement);
+		if (pendingRestart.initialPlacement)
+		{
+			pendingRestart = {};
+			return;
+		}
 		// Only the remaining settings need the settle delay.
 		pendingRestart.readyAt = now + RestartSettleMs;
 		return;
 	}
 
+	const auto elapsed = now - pendingRestart.started;
 	pendingRestart = {};
 	RestartWithChanges();
 	SetIndividualCharacterHealth();
@@ -1099,11 +1559,17 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 	GetDebugData();
 	KOToggles();
 	DeathDelay();
+	Log(0, "restart: complete elapsed_ms=%llu", elapsed);
 }
 
-void TrainingTeamEditor::TraceQuickShortcut(const char* event)
+void TrainingTeamEditor::TraceQuickShortcut(const char* format, ...)
 {
-	Log(0, "quick training: %s", event);
+	char message[320];
+	va_list args;
+	va_start(args, format);
+	vsnprintf_s(message, sizeof(message), _TRUNCATE, format, args);
+	va_end(args);
+	Log(0, "quick training: %s", message);
 }
 
 void TrainingTeamEditor::TraceQuickSelection(int p1Phase, int p2Phase, int mode)
@@ -1149,18 +1615,27 @@ void TrainingTeamEditor::FlushRecordingLog()
 		return;
 
 	FILE* file = nullptr;
-	if (_wfopen_s(&file, recordingLogPath.c_str(), L"a") != 0)
+	static bool openFailed = false;
+	const auto error = _wfopen_s(&file, recordingLogPath.c_str(), L"a");
+	if (error != 0)
+	{
+		if (!openFailed)
+			Log(0, "recording: could not append diagnostics error=%d", error);
+		openFailed = true;
 		return;
+	}
+	if (std::exchange(openFailed, false))
+		Log(0, "recording: diagnostics append recovered");
 
 	for (size_t index = 0; index < count; ++index)
 	{
 		WriteLogTimestamp(file);
-		std::fprintf(file, "%s\n", lines[index].data());
+		std::fprintf(file, "pid=%lu %s\n", GetCurrentProcessId(), lines[index].data());
 	}
 	if (dropped)
 	{
 		WriteLogTimestamp(file);
-		std::fprintf(file, "Dropped %u diagnostic messages\n", dropped);
+		std::fprintf(file, "pid=%lu Dropped %u diagnostic messages\n", GetCurrentProcessId(), dropped);
 	}
 	std::fclose(file);
 }
@@ -1170,16 +1645,22 @@ bool TrainingTeamEditor::PrepareQuickMatch(const TrainingShortcut::TeamPicks& pi
 	const auto settings = PointerAt(_addr(0x140d50e58));
 	Teams current{};
 	// The selector and the direct launch check their respective game states before staging teams.
-	if (!settings || !Read(settings + SelectionOffset, current) || !ValidPicks(picks))
+	const bool selectionReady = settings && Read(settings + SelectionOffset, current);
+	const bool validPicks = ValidPicks(picks);
+	const bool availableColors = validPicks && HasAvailableColors(picks);
+	if (!selectionReady || !validPicks || !availableColors)
 	{
-		Log(0, "quick training: selection preflight failed");
+		Log(0, "quick training: selection preflight failed selection_ready=%d valid_teams=%d available_colors=%d",
+			selectionReady, validPicks, availableColors);
 		return false;
 	}
 
 	auto proposed = current;
 	for (int slot = 0; slot < SlotCount; ++slot)
 	{
-		if (proposed[slot].id != picks[slot].id)
+		if (picks[slot].color != TrainingShortcut::AutomaticColor)
+			proposed[slot].color = picks[slot].color;
+		else if (proposed[slot].id != picks[slot].id)
 			proposed[slot].color = 0;
 		proposed[slot].side = slot / SlotsPerTeam;
 		proposed[slot].id = picks[slot].id;
@@ -1196,10 +1677,11 @@ bool TrainingTeamEditor::PrepareQuickMatch(const TrainingShortcut::TeamPicks& pi
 	return true;
 }
 
-bool TrainingTeamEditor::IsTrainingPlayable()
+uintptr_t TrainingTeamEditor::GetPlayableTrainingAction()
 {
+	const auto action = GetFightingAction();
 	LoadedTeams loaded{};
-	return GetFightingAction() && ReadLoadedTeams(loaded);
+	return action && ReadLoadedTeams(loaded) ? action : 0;
 }
 
 uintptr_t TrainingTeamEditor::GetFightingAction()
@@ -1237,6 +1719,36 @@ void TrainingTeamEditor::InitializeLog(HMODULE module)
 				OpenRecordingLog(directory);
 		}
 	}
+	wchar_t gamePath[MAX_PATH]{};
+	WIN32_FILE_ATTRIBUTE_DATA gameFile{};
+	const auto lengthGamePath = GetModuleFileNameW(nullptr, gamePath, MAX_PATH);
+	const bool identified = lengthGamePath && lengthGamePath < MAX_PATH
+		&& GetFileAttributesExW(gamePath, GetFileExInfoStandard, &gameFile);
+	Log(0, "diagnostics: game_file_identified=%d game_exe_bytes=%llu teams_in_temp=%d recording_log=%d recording_same_folder=%d",
+		identified, (static_cast<std::uint64_t>(gameFile.nFileSizeHigh) << 32) | gameFile.nFileSizeLow,
+		logInTemp, !recordingLogPath.empty(), logAvailable && !recordingLogPath.empty()
+			&& logPath.parent_path() == recordingLogPath.parent_path());
+}
+
+void TrainingTeamEditor::DrawLogMenu()
+{
+	const auto teamsFolder = logAvailable ? logPath.parent_path() : std::filesystem::path{};
+	const auto recordingFolder = recordingLogPath.parent_path();
+	const auto& mainFolder = teamsFolder.empty() ? recordingFolder : teamsFolder;
+	const auto open = [](const std::filesystem::path& folder)
+	{
+		const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+		if (result <= 32)
+		{
+			Log(0, "diagnostics: could not open log folder shell_result=%Id", result);
+			MessageBoxW(nullptr, Localizer::UiWideText("LOG_OPEN_FAILED").c_str(), L"UMVC3 Training Tools", MB_OK | MB_ICONERROR);
+		}
+	};
+	if (ImGui::MenuItem(UiText("LOG_OPEN_FOLDER"), nullptr, false, !mainFolder.empty()))
+		open(mainFolder);
+	if (logAvailable && !recordingFolder.empty() && recordingFolder != teamsFolder
+		&& ImGui::MenuItem(UiText("LOG_OPEN_RECORDING_FOLDER")))
+		open(recordingFolder);
 }
 
 bool TrainingTeamEditor::Update()
@@ -1287,6 +1799,8 @@ bool TrainingTeamEditor::Update()
 			matches &= expected ? loaded[slot].gameClass == expected
 				: loaded[slot].gameClass != trial.originalFighters[slot].gameClass;
 			matches &= loaded[slot].assist == trial.proposed[slot].assist;
+			if (trial.before.teams[slot].color != trial.proposed[slot].color)
+				matches &= loaded[slot].color == trial.proposed[slot].color;
 		}
 		if (matches)
 		{
@@ -1294,11 +1808,12 @@ bool TrainingTeamEditor::Update()
 				ClearReloadFlags(match.action, trial.reloadFlags);
 			trial.pending = false;
 			watchedAttempt.store(0);
-			pendingRestart = { match.settings, match.action };
-			Log(trial.number, "editor completed trial: assists verified, all class IDs verifiable=%d", known);
+			if (trial.exercise)
+				ApplyExercise(match.action, *trial.exercise);
+			BeginRestart(match, quickExerciseAction == match.action ? std::optional{ quickExerciseReset } : std::nullopt, "team reload");
+			Log(trial.number, "editor completed trial: assists and color changes verified, all class IDs verifiable=%d", known);
 			LogLoadedTeams(trial.number, "confirmed loaded", loaded);
-			status = known ? "TEAM_VERIFIED"
-				: "TEAM_VERIFY_FIGHTER";
+			status = known ? (trial.successStatus ? trial.successStatus : "TEAM_VERIFIED") : "TEAM_VERIFY_FIGHTER";
 			return true;
 		}
 	}
@@ -1364,13 +1879,107 @@ void TrainingTeamEditor::Draw()
 	DrawTeamDraft(draft);
 
 	if (ImGui::Button(UiText("TEAM_APPLY")))
-		Apply(match);
+		Apply(match, draft);
 	ImGui::SameLine();
 	if (ImGui::Button(UiText("TEAM_RESET_DRAFT")))
 	{
 		ResetDraft(match);
 		status = "";
 	}
+	ImGui::EndDisabled();
+	ImGui::EndTabItem();
+}
+
+void TrainingTeamEditor::DrawPresetTab()
+{
+	if (!ImGui::BeginTabItem(Localizer::UiLabel("PRESET_TAB").c_str()))
+		return;
+
+	Match match;
+	if (!ReadMatch(match) || !ValidSelection(match.teams))
+	{
+		ImGui::TextWrapped("%s", UiText("TEAM_NEED_MATCH"));
+		ImGui::EndTabItem();
+		return;
+	}
+
+	static uintptr_t lastPresetMatch = 0;
+	static bool captureExercise = false;
+	static int capturePosition = 0;
+	if (lastPresetMatch != match.action)
+	{
+		lastPresetMatch = match.action;
+		RefreshQuickPresets();
+		const auto positions = quickExerciseAction == match.action ? quickExerciseReset : XPositions{ p1Pos, p2Pos };
+		const auto choice = std::find_if(QuickResetChoices.begin(), QuickResetChoices.end(), [&](const auto& entry)
+		{
+			return entry.second.p1 == positions.p1 && entry.second.p2 == positions.p2;
+		});
+		capturePosition = choice == QuickResetChoices.end() ? 0 : static_cast<int>(choice - QuickResetChoices.begin());
+	}
+
+	const int stage = TrainingShortcut::CurrentTrainingStage();
+	ImGui::BeginDisabled(trial.pending);
+	if (DrawQuickPresetSelector("training tab") && !trial.uncertain)
+		status = "";
+	if (selectedQuickPreset)
+	{
+		const auto& preset = *selectedQuickPreset;
+		ImGui::Text(UiText("PRESET_SAVED_STAGE"), Stages[preset.stage]);
+		const bool sameStage = stage == preset.stage;
+		if (!sameStage)
+			ImGui::TextWrapped("%s", UiText("PRESET_STAGE_FROM_MAIN"));
+		ImGui::BeginDisabled(trial.uncertain);
+		if (ImGui::Button(UiText(sameStage ? "PRESET_APPLY" : "PRESET_APPLY_CURRENT_STAGE")))
+		{
+			Log(0, "presets: apply requested saved_stage=%d current_stage=%d same_stage=%d", preset.stage, stage, sameStage);
+			if (HasAvailableColors(preset.picks))
+				Apply(match, DraftFromPreset(match, preset), &preset);
+			else
+			{
+				status = "QUICK_ALT_UNAVAILABLE";
+				Log(0, "presets: apply rejected reason=alternate costume missing");
+			}
+		}
+		ImGui::EndDisabled();
+	}
+	if (*status)
+		ImGui::TextWrapped("%s", UiText(status));
+
+	ImGui::SeparatorText(UiText("PRESET_SAVE_CURRENT"));
+	if (stage < 0)
+		ImGui::TextWrapped("%s", UiText("PRESET_STAGE_UNKNOWN"));
+	ImGui::Checkbox(UiText("QUICK_EXERCISE"), &captureExercise);
+	if (captureExercise)
+		DrawResetChoice(capturePosition);
+	DrawQuickPresetActions([&](bool update)
+	{
+		QuickPreset snapshot{ {}, {}, stage };
+		for (int slot = 0; slot < SlotCount; ++slot)
+		{
+			const auto& fighter = match.teams[slot];
+			snapshot.picks[slot] = { fighter.id, fighter.assist,
+				ValidPresetColor(fighter.color) ? fighter.color : TrainingShortcut::AutomaticColor };
+		}
+		if (captureExercise)
+		{
+			QuickExercise exercise;
+			exercise.resetPosition = capturePosition;
+			{
+				const std::lock_guard lock(RecordingMutex);
+				for (size_t index = 0; index < DummyReactionSettings.size(); ++index)
+					exercise.reactions[index] = *DummyReactionSettings[index];
+			}
+			if (std::any_of(exercise.reactions.begin(), exercise.reactions.end(), [](const DummyReaction& reaction) { return reaction.slot != 0; }))
+			{
+				quickPresetStatus = "PRESET_RECORDING_UNSUPPORTED";
+				Log(0, "presets: save rejected reason=exercise references a recording slot");
+				return;
+			}
+			snapshot.exercise = exercise;
+		}
+		SaveQuickPreset(std::move(snapshot), update, true);
+	}, stage >= 0 && !trial.pending && !trial.uncertain);
 	ImGui::EndDisabled();
 	ImGui::EndTabItem();
 }
