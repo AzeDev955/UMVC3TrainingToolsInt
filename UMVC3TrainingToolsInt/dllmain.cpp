@@ -237,6 +237,7 @@ static void TheMenuBar()
 	{
 		if (ImGui::BeginMenu(UiText("MENU_FILE")))
 		{
+			TrainingTeamEditor::DrawLogMenu();
 			if (ImGui::MenuItem(UiText("FILE_RESETSETTINGS")))
 			{
 				ResetSettings();
@@ -3181,9 +3182,10 @@ static void TheExtraDataTab()
 }
 
 //For Recording And Playback Stuff.
-static void DrawDummyReaction(const char* label, DummyReaction& reaction)
+void TrainingTeamEditor::DrawDummyReaction(const char* label, DummyReaction& reaction, bool allowRecordings)
 {
 	const auto previous = reaction;
+	const bool movesAvailable = !allowRecordings || HasDummyControllerInputHook();
 	ImGui::PushID(label);
 	ImGui::TextUnformatted(UiText(label));
 	std::string selectedSource = UiText("REC_REACTION_OFF");
@@ -3212,29 +3214,32 @@ static void DrawDummyReaction(const char* label, DummyReaction& reaction)
 		if (ImGui::Button(UiText("REC_REACTION_OFF")))
 			selectMove(NoDummyMove);
 		ImGui::SameLine();
-		ImGui::BeginDisabled(!HasDummyControllerInputHook());
+		ImGui::BeginDisabled(!movesAvailable);
 		if (ImGui::Button(UiText("REC_REACTION_CUSTOM")))
 			selectMove(CustomDummyMove);
 		ImGui::EndDisabled();
 
-		ImGui::SeparatorText(UiText("REC_REACTION_RECORDINGS"));
-		for (int slot = 1; slot <= 5; ++slot)
+		if (allowRecordings)
 		{
-			if (slot > 1)
-				ImGui::SameLine();
-			ImGui::PushID(slot);
-			const auto name = std::to_string(slot);
-			if (ImGui::Button(name.c_str(), ImVec2(cell, 0.0f)))
+			ImGui::SeparatorText(UiText("REC_REACTION_RECORDINGS"));
+			for (int slot = 1; slot <= 5; ++slot)
 			{
-				reaction.slot = slot;
-				reaction.move = NoDummyMove;
-				ImGui::CloseCurrentPopup();
+				if (slot > 1)
+					ImGui::SameLine();
+				ImGui::PushID(slot);
+				const auto name = std::to_string(slot);
+				if (ImGui::Button(name.c_str(), ImVec2(cell, 0.0f)))
+				{
+					reaction.slot = slot;
+					reaction.move = NoDummyMove;
+					ImGui::CloseCurrentPopup();
+				}
+				ImGui::PopID();
 			}
-			ImGui::PopID();
 		}
 
 		ImGui::SeparatorText(UiText("REC_REACTION_MOVES"));
-		ImGui::BeginDisabled(!HasDummyControllerInputHook());
+		ImGui::BeginDisabled(!movesAvailable);
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, cellPadding);
 		if (ImGui::BeginTable("##dummy-moves", DummyMoveGridSide,
 			ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoPadOuterX))
@@ -3287,7 +3292,7 @@ static void DrawDummyReaction(const char* label, DummyReaction& reaction)
 	}
 	if (reaction.slot && !HasDummyRecording(reaction.slot))
 		ImGui::TextDisabled("%s", UiText("REC_REACTION_EMPTY"));
-	if (reaction.slot != previous.slot || reaction.move != previous.move || delayEdited || customApplied)
+	if (allowRecordings && (reaction.slot != previous.slot || reaction.move != previous.move || delayEdited || customApplied))
 		TrainingTeamEditor::TraceRecording("reaction configured event=%s slot=%d delay=%d move=%s available=%d",
 			label, reaction.slot, reaction.delay,
 			reaction.move == CustomDummyMove ? reaction.customInput.data() : DummyMoveLabel(reaction.move),
@@ -3326,10 +3331,10 @@ static void TheRecordPlaybackTab()
 		};
 
 		ImGui::SeparatorText(UiText("REC_REACTIONS"));
-		DrawDummyReaction("REC_REACTION_HIT", DummyOnHit);
-		DrawDummyReaction("REC_REACTION_BLOCK", DummyOnBlock);
-		DrawDummyReaction("REC_REACTION_WAKEUP", DummyOnWakeup);
-		DrawDummyReaction("REC_REACTION_INCOMING", DummyOnIncoming);
+		TrainingTeamEditor::DrawDummyReaction("REC_REACTION_HIT", DummyOnHit, true);
+		TrainingTeamEditor::DrawDummyReaction("REC_REACTION_BLOCK", DummyOnBlock, true);
+		TrainingTeamEditor::DrawDummyReaction("REC_REACTION_WAKEUP", DummyOnWakeup, true);
+		TrainingTeamEditor::DrawDummyReaction("REC_REACTION_INCOMING", DummyOnIncoming, true);
 		ImGui::TextWrapped("%s", UiText("REC_REACTION_HELP"));
 		ImGui::Separator();
 		if (IsDummyControllerRecording())
@@ -5147,6 +5152,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 
 	if (RegisterClassEx(&wc) == 0)
 	{
+		TrainingTeamEditor::TraceWindowRenderer("register tool window class failed", HRESULT_FROM_WIN32(GetLastError()));
 		MessageBoxW(nullptr, Localizer::UiWideText("UI_WINDOW_CLASS").c_str(), L"UMVC3 Training Tools", MB_OK | MB_ICONERROR);
 		return E_FAIL;
 	}
@@ -5157,6 +5163,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	//This checks that the window was created successfully.
 	if (hWnd == NULL)
 	{
+		TrainingTeamEditor::TraceWindowRenderer("create tool window failed", HRESULT_FROM_WIN32(GetLastError()));
 		MessageBoxW(nullptr, Localizer::UiWideText("UI_WINDOW_CREATE").c_str(), L"UMVC3 Training Tools", MB_OK | MB_ICONERROR);
 		return E_FAIL;
 	}
@@ -5164,6 +5171,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	//Time to initialize DirectX9. Returns 1 if it fails.
 	if (!CreateD3DDevice(hWnd))
 	{
+		TrainingTeamEditor::TraceWindowRenderer("create tool Direct3D device failed", E_FAIL);
 		CleanupD3DDevice();
 		UnregisterClass(wc.lpszClassName, wc.hInstance);
 		return 1;
@@ -5268,7 +5276,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		const bool runTrainingUpdates = TrainingTeamEditor::Update();
 		if (gameFocused && !focusTool && runTrainingUpdates && TrainingPad::Pressed(TrainingPad::Shortcut::ResetTraining))
 		{
-			auto positions = previousDirectionalReset;
+			const auto exercisePositions = TrainingTeamEditor::QuickResetPositions();
+			auto positions = exercisePositions ? exercisePositions : previousDirectionalReset;
 			switch (TrainingPad::HeldDirection())
 			{
 			case TrainingPad::Direction::Neutral:
@@ -5289,7 +5298,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 				break;
 			}
 			}
-			if (TrainingTeamEditor::RequestTrainingRestart(positions))
+			if (TrainingTeamEditor::RequestTrainingRestart(positions) && !exercisePositions)
 				previousDirectionalReset = positions;
 		}
 		if (runTrainingUpdates)
@@ -5409,6 +5418,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 						if (runTrainingUpdates)
 							TheExtraOptionsTab();
 						TrainingTeamEditor::Draw();
+						TrainingTeamEditor::DrawPresetTab();
 						if (runTrainingUpdates)
 						{
 							//The other menus.

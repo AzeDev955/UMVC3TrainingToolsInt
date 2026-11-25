@@ -1,149 +1,125 @@
-A tool designed to incrase and improve quality of life of Ultimate Marvel vs Capcom 3's training mode.
-This tool adds more options to practice and setup situations that weren't present before.
-The recent build uses Mid 2025 revisions Imgui & Sokol with a D3D11 backend.
-The public build has 5 pages.
+UMVC3 Training Tools is a Windows mod for the PC version of Ultimate Marvel vs. Capcom 3. It adds team editing, reusable practice setups, dummy reactions, and tools for inspecting and adjusting Training mode.
 
-[English](#windows-installation) · [Español](#instalación-en-windows)
+[English](#windows-installation) · [Español](#instalación-en-windows) · [Report a bug](#report-a-bug) · [Reportar un fallo](#reportar-un-fallo)
 
-## Disclaimer / Nota de autoría
+This fork builds on the mod by EternalYoshi. Thanks to EternalYoshi, HKHaan, Sheep, Techs, anotak, Ermaccer, and the other contributors. [Original repository](https://github.com/EternalYoshi/UMVC3TrainingToolsInt)
 
-This fork builds on the original UMVC3TrainingToolsInt mod by EternalYoshi. Credit for the original mod goes to EternalYoshi and the contributors to that project. [Original repository](https://github.com/EternalYoshi/UMVC3TrainingToolsInt)
-
-Este fork parte del mod original UMVC3TrainingToolsInt, creado por EternalYoshi. El crédito por el mod original corresponde a EternalYoshi y a quienes contribuyeron a ese proyecto. [Repositorio original](https://github.com/EternalYoshi/UMVC3TrainingToolsInt)
+Este fork parte del mod de EternalYoshi. Gracias a EternalYoshi, HKHaan, Sheep, Techs, anotak, Ermaccer y el resto de colaboradores. [Repositorio original](https://github.com/EternalYoshi/UMVC3TrainingToolsInt)
 
 ## Windows installation
 
-1. Close the game and run `UMVC3TrainingToolsInt-Setup.exe`.
-2. The installer searches your Steam libraries for UMVC3. If it cannot find the game, choose **Browse** and select `umvc3.exe`.
-3. Choose **English** or **Español**, click **Install**, then click **Play** to launch the game.
+1. Close the game, download `UMVC3TrainingToolsInt-Setup.exe`, and run it. [GitHub Releases](https://github.com/AzeDev955/UMVC3TrainingToolsInt/releases)
+2. The installer searches your Steam libraries. Use **Browse** and select `umvc3.exe` if needed.
+3. Choose your language, click **Install**, then click **Play**. You can change the mod's interface language later from the **Language** menu.
 
-Press **F4** in the game's main menu to open Quick Training. Press **F5** to open or close the tools window.
+The installer adds the x64 ASI Loader if `dinput8.dll` is missing and backs up replaced files in `UMVC3TrainingToolsInt-Backups`. At startup the mod checks GitHub Releases. If you accept an update, it downloads and verifies the installer, closes the game, installs the update, and relaunches the game. Windows may request administrator permission for protected folders.
 
-In Quick Training, enter a name and choose **Save preset** to keep both teams, their assists and order, and the selected stage. Choose a saved setup from **Load preset**, then press **Start Training**. Presets are stored in `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
+### Quick Training and presets
 
-After loading a preset, edit the teams, stage or name and choose **Update preset**. Use **Save as new** to keep a separate copy or **Delete preset** to remove the saved preset after confirming.
+- In the main menu, press **F4** to open **Quick Training**. Choose the stage and three different fighters per team. Expand each fighter's row to choose their assist, one of the six base colors, or an installed **Alternate costume**. Use the arrows to change team order.
+- Choose **Start Training** to enter the match. Where both launch methods are supported, the **Direct launch (experimental)** checkbox lets you switch between them. When direct launch is the only compatible route, the panel indicates that it will use it.
+- Give the setup a name and choose **Save preset**. To include the reset position and the dummy's reactions, enable **Include exercise settings** and open **Configure exercise**. Choose center or either corner, then configure each reaction's move and delay. Saved exercises support grid moves and custom commands. You can save recording slots separately in the **Recording** tab.
+- Choose **Load preset**, then start Training. Use **Update preset** to replace or rename the selected preset, **Save as new** to make a copy, or **Delete preset** to remove it. Older team presets are supported. Files are stored in `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
+- During a match, press **F5** and open **Preset** to save the current setup or apply a saved preset. When saving an exercise here, choose its reset position and the mod captures the dummy reactions currently configured in **Recording**. You can apply a preset on the current stage. To play on the preset's saved stage, use **F4** from the main menu.
+- In **F5 → Teams**, expand the fighter rows to edit the current teams and choose **Apply and reload**. Use **Reset draft** to discard unsubmitted edits. Stop recording or playback before applying team changes.
 
-When MVC3 starts, the mod checks GitHub Releases in the background. If you accept an update, it downloads and verifies the installer, closes MVC3, installs the update and relaunches the game. Windows may ask for administrator permission if the game folder is protected. Install v0.9.3 manually once to enable this flow on older installations.
+### Recording and dummy reactions
 
-### Controller
+1. Open **F5 → Recording** and choose one of the five slots. You can record and play back P1, P2, or both. Use the save and load buttons to keep a recording file for either player.
+2. To record P2 with P1's controller, choose **Record dummy with my controller**. Reopen **Recording** and choose **Stop recording** to give the controller back to P1.
+3. Under **Dummy reactions**, configure what P2 does after hitstun, blockstun, wakeup, or when coming in after a KO. Each reaction can be disabled or use a P2 recording, a grid move, or a custom input. Set its delay from 0 to 120 frames. The incoming reaction can start before P2 lands.
+4. For custom inputs, use numpad directions `1–9` and buttons `L M H S A1 A2`. Use `+` for simultaneous buttons, as in `623L+M`, and press **Apply** or **Enter**.
 
-- **View / Select** opens Quick Training from the main menu. **R3** opens the tools window.
-- Use the D-pad or left stick to navigate and **A / Cross** to confirm. **B / Circle** closes the active dropdown. With no dropdown open, it closes the mod menu and returns focus to the game.
-- **L3** restarts Training, even with the mod menu closed. Without a direction, it repeats the last directional reset of the session. Before the first directional reset, it uses the positions configured under **Extra → Positioning**. You can reassign or disable the shortcuts in **Controller shortcuts**. Bindings are saved in `UMVC3TrainingToolsInt.ini`.
-- Hold a direction on the D-pad or left stick while pressing **Reset Training**. **Left/right** puts P2 in that corner, **down** returns both players to the center, and **up** swaps their reset positions.
-- The mod detects XInput controllers, including controllers that Steam Input presents as XInput devices.
+### In-match tools
 
-While the mod menu has focus, it captures XInput so controller navigation does not affect the game. Release the controls after closing the menu to resume play.
+| Tab | Controls |
+| --- | --- |
+| **Extra** | Restart at the intro, at **Ready**, or directly into Training. Set horizontal positions for both players, use center and corner presets, enable unlimited X-Factor per player, or move the input display to the left. Adjust game speed or either team's character speed, including the Viewtiful Joe and Vale of Mist slowdown presets. |
+| **Status** | Set each fighter's starting health on restart and optionally apply it to red health. Set or lock each team's Hyper Meter and toggle Jamming Bomb's reversed controls per fighter. Turn off **Life Recovery** in the game's pause menu when setting individual health. |
+| **Character** | Set Frank West's level, choose and lock Phoenix Wright's evidence and toggle Turnabout, toggle Dark Phoenix, set and lock MODOK's Understanding, Dormammu's spell charges, or Deadpool's teleport count, and break Wesker's glasses now or at restart. Enable unlimited timed transformations for base-game fighters. |
+| **Data** | Inspect remaining hitstun and blockstun for each fighter and ground and air hitstun counters. |
+| **Incoming** | Practice entries after a KO. Set the KO delay and its X/Y position, use a player's start position or a center/corner shortcut, KO either active fighter on restart, or toggle KO per fighter. Turn off **Life Recovery** in the game's pause menu for these experimental controls. |
 
-Inside the game's folder, `logs/UMVC3TrainingToolsInt-Teams.log` contains team editor and Quick Training events. `logs/UMVC3TrainingToolsInt-Recording.log` contains recording, controller input, playback, and dummy reaction events. On startup the mod moves the legacy Teams log into `logs/`.
+Some effects keep their original visual or audio state when set by the mod, including Jamming Bomb, Turnabout, Dark Phoenix, Frank West's level aura, and MODOK's flame. Use **File → Reset Settings To Default** to restore the mod's settings.
 
-The installer includes Ultimate ASI Loader x64 for installations without `dinput8.dll`. When it updates mod files, it backs up the originals in `UMVC3TrainingToolsInt-Backups`.
+### Controller shortcuts
 
-To build the installer from a mod release ZIP, pass its version with `-Tag`, for example `.\installer\Build-Installer.ps1 -ModZip path-to-zip -Tag v0.9.3`.
+- By default, **View / Select** opens Quick Training from the main menu, **R3** opens the tools window, and **L3** resets Training. Change or disable these shortcuts in **Controller shortcuts**. Bindings are saved in `UMVC3TrainingToolsInt.ini`.
+- Hold **left/right** on the D-pad or left stick while resetting to put P2 in that corner. **Down** returns both players to center, and **up** swaps their reset positions. A reset with no direction uses the exercise position if active, or repeats the last directional reset. Before the first directional reset, it uses the positions in **Extra → Positioning**.
+- Use the D-pad or left stick to navigate, **A / Cross** to confirm, and **B / Circle** to close a dropdown or the tools window. The mod supports XInput and controllers exposed as XInput through Steam Input. Release the controls after closing a tools window before resuming play.
 
-To compile and verify an installer directly from the source checkout, run `.\installer\Build-Release.ps1` in PowerShell. It writes `installer/UMVC3TrainingToolsInt-Setup-vX.Y.Z.exe` using the source version. See the [release workflow](#publicación-en-github) for GitHub Actions.
+### Report a bug
+
+1. Reproduce the issue and note the steps, what you expected, and what happened. Include the mod version and any other enabled mods. For input issues, specify whether you used a keyboard or a controller.
+2. Open **File → Open logs folder** from the F4 or F5 window. If the window is unavailable, look in `logs` next to `umvc3.exe`, then in `%TEMP%\UMVC3TrainingToolsInt\logs`.
+3. Collect the relevant logs.
+
+   - `UMVC3TrainingToolsInt-Teams.log` covers startup, Quick Training, presets, team changes, and restarts.
+   - `UMVC3TrainingToolsInt-Recording.log` covers controller input, recording, playback, and dummy reactions. If **File → Open recording logs folder** appears, use it to find this file.
+   - If the current log starts after the incident, check the corresponding `.previous.log`. The logs use UTC.
+
+4. Open an issue with your notes and attach the relevant files. If GitHub rejects the `.log` attachments, put them in a ZIP. [GitHub Issues](https://github.com/AzeDev955/UMVC3TrainingToolsInt/issues)
 
 ## Instalación en Windows
 
-**F5** abre o cierra la ventana de herramientas durante el juego.
+1. Cierra el juego, descarga `UMVC3TrainingToolsInt-Setup.exe` y ejecútalo. [GitHub Releases](https://github.com/AzeDev955/UMVC3TrainingToolsInt/releases)
+2. El instalador busca el juego en tus bibliotecas de Steam. Si hace falta, usa **Examinar** para seleccionar `umvc3.exe`.
+3. Elige el idioma, pulsa **Instalar** y después **Jugar**. Puedes cambiar el idioma de la interfaz del mod más tarde desde el menú **Idioma**.
 
-En Quick Training, escribe un nombre y pulsa **Save preset** para guardar ambos equipos, su orden, las asistencias y el escenario. Elige una configuración en **Load preset** y pulsa **Start Training**. Los presets se guardan en `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
+El instalador añade el cargador ASI x64 si falta `dinput8.dll` y guarda los archivos reemplazados en `UMVC3TrainingToolsInt-Backups`. Al iniciar, el mod consulta GitHub Releases. Si aceptas una actualización, descarga y verifica el instalador, cierra el juego, instala la versión y vuelve a abrirlo. Windows puede solicitar permisos de administrador si la carpeta está protegida.
 
-Tras cargar un preset, edita los equipos, el escenario o el nombre y pulsa **Update preset**. Usa **Save as new** para guardar una copia o **Delete preset** para borrar el preset guardado tras confirmarlo.
+### Entrenamiento rápido y presets
 
-Al iniciar MVC3, el mod consulta GitHub Releases en segundo plano. Al aceptar una actualización, descarga y verifica el instalador, cierra MVC3, instala la versión y vuelve a abrir el juego. Windows puede pedir permiso de administrador si la carpeta del juego está protegida. Instala la v0.9.3 manualmente una vez para habilitar este flujo desde versiones anteriores.
+- En el menú principal, pulsa **F4** para abrir **Entrenamiento rápido**. Elige escenario y tres personajes distintos por equipo. Despliega la fila de cada personaje para elegir su asistencia, uno de los seis colores base o el **Traje alternativo** si está instalado. Las flechas cambian el orden del equipo.
+- Pulsa **Iniciar entrenamiento** para entrar al combate. Cuando las dos rutas son compatibles, la casilla **Carga directa (experimental)** permite alternar entre ellas. Si la carga directa es la única disponible, el panel lo indica.
+- Pon un nombre a la configuración y pulsa **Guardar preset**. Para incluir la posición de reinicio y las reacciones de J2, activa **Incluir ajustes del ejercicio** y abre **Configurar ejercicio**. Elige centro o una esquina y configura el movimiento y el retardo de cada reacción. Los ejercicios guardados admiten movimientos de la cuadrícula y comandos personalizados. Puedes guardar las grabaciones por separado desde **Grabación**.
+- Usa **Cargar preset** y después inicia el entrenamiento. **Actualizar preset** reemplaza o renombra el seleccionado. **Guardar como nuevo** crea una copia y **Borrar preset** lo elimina. Los presets de equipo anteriores se pueden seguir cargando. Los archivos se guardan en `%LOCALAPPDATA%\UMVC3TrainingToolsInt\QuickTraining`.
+- Durante un combate, pulsa **F5** y abre **Preset** para guardar la configuración actual o aplicar un preset guardado. Si guardas un ejercicio desde aquí, elige la posición de reinicio y el mod captura las reacciones configuradas en **Grabación**. Puedes aplicar un preset en el escenario actual. Para jugar en el escenario guardado, usa **F4** desde el menú principal.
+- En **F5 → Equipos**, despliega las filas para editar los equipos actuales y pulsa **Aplicar y recargar**. Usa **Restablecer selección** para descartar los cambios pendientes. Detén cualquier grabación o reproducción antes de aplicar cambios de equipo.
 
-### Mando
+### Grabación y reacciones del dummy
 
-- **View / Select** abre Quick Training en el menú principal y **R3** abre la ventana de herramientas.
-- Usa la cruceta o el stick izquierdo para navegar y **A / ✕** para confirmar. **B / ○** cierra el desplegable activo o, si no hay ninguno, cierra el menú del mod y devuelve el foco al juego.
-- **L3** reinicia Entrenamiento, incluso con el menú del mod cerrado. Sin dirección, repite el último reinicio direccional de la sesión. Antes del primero, usa las posiciones de **Extra → Posiciones**. Puedes cambiar o desactivar los atajos en **Atajos del mando**. Las asignaciones se guardan en `UMVC3TrainingToolsInt.ini`.
-- Mantén una dirección en la cruceta o el stick izquierdo al pulsar **Reiniciar entrenamiento**. **Izquierda/derecha** coloca a J2 en esa esquina, **abajo** vuelve al centro y **arriba** intercambia las posiciones de reinicio de J1 y J2.
-- El mod detecta mandos XInput, incluidos los que Steam Input presenta como XInput.
+1. Abre **F5 → Grabación** y elige una de las cinco ranuras. Puedes grabar y reproducir los controles de J1, J2 o ambos. Usa los botones de guardar y cargar para conservar una grabación de cualquiera de los dos jugadores como archivo.
+2. Para grabar a J2 con el mando de J1, elige **Grabar dummy con mi mando**. Vuelve a **Grabación** y pulsa **Detener grabación** para devolver el mando a J1.
+3. En **Reacciones del dummy**, configura qué hace J2 tras recibir un golpe, bloquear, levantarse o entrar tras un KO. Cada reacción puede estar desactivada o usar una grabación de J2, un movimiento de la cuadrícula o una secuencia personalizada. El retardo va de 0 a 120 fotogramas. La reacción de entrada puede empezar antes de que J2 aterrice.
+4. En una secuencia personalizada, usa las direcciones del teclado numérico `1–9` y los botones `L M H S A1 A2`. Une los botones simultáneos con `+`, como en `623L+M`, y pulsa **Aplicar** o **Enter**.
 
-Mientras el menú del mod tiene el foco, captura la entrada XInput del mando. Al cerrar el menú, suelta los controles para volver a jugar.
+### Herramientas dentro del combate
 
-Dentro de la carpeta del juego, `logs/UMVC3TrainingToolsInt-Teams.log` recoge los eventos del editor de equipos y de Quick Training. `logs/UMVC3TrainingToolsInt-Recording.log` recoge los eventos de grabación, mandos, reproducción y reacciones del dummy. Al iniciar, el mod traslada el registro antiguo de equipos a `logs/`.
+| Pestaña | Opciones |
+| --- | --- |
+| **Extra** | Reinicia desde la introducción, desde **Ready** o directamente en Entrenamiento. Ajusta la posición horizontal de ambos jugadores, usa accesos al centro y las esquinas, activa X-Factor ilimitado por jugador o mueve el historial de controles a la izquierda. Ajusta la velocidad del juego o la de los personajes de cada equipo, con las ralentizaciones de Viewtiful Joe y Vale of Mist. |
+| **Estado** | Fija la vida de cada personaje al reiniciar y aplícala también a la vida roja si quieres. Ajusta o fija la barra de especiales de ambos equipos y activa los controles invertidos de Jamming Bomb por personaje. Desactiva **Recuperación de vida** en el menú de pausa al fijar la vida individual. |
+| **Personaje** | Ajusta el nivel de Frank West, elige y fija las pruebas de Phoenix Wright y activa Turnabout o Fénix Oscura. Ajusta y fija la comprensión de MODOK, las cargas de Dormammu o el contador de teletransportes de Deadpool. Rompe las gafas de Wesker al momento o al reiniciar, y activa transformaciones temporales ilimitadas para personajes del juego base. |
+| **Datos** | Consulta el aturdimiento restante por impacto o bloqueo de cada personaje y los contadores de aturdimiento en suelo y aire. |
+| **Entradas** | Practica entradas tras un KO. Configura el retardo y la posición X/Y del KO, usa la posición inicial de un jugador o un acceso al centro o la esquina, derrota al personaje activo de cualquiera de los dos equipos al reiniciar o activa KO por personaje. Desactiva **Recuperación de vida** en el menú de pausa para usar estas opciones experimentales. |
 
-Con el juego cerrado, abre `UMVC3TrainingToolsInt-Setup.exe`. El instalador busca UMVC3 en las bibliotecas de Steam. Si hace falta, usa **Examinar** para seleccionar `umvc3.exe`. Puedes cambiar el idioma del instalador entre español e inglés. Pulsa **Instalar** y luego **Jugar** para abrir el juego. Desde el menú principal, **F4** abre Quick Training.
+Algunos efectos conservan su estado visual o sonoro anterior al activarlos desde el mod, como Jamming Bomb, Turnabout, Fénix Oscura, el aura de nivel de Frank West o la llama de MODOK. Usa **Archivo → Restablecer ajustes** para recuperar los ajustes del mod.
 
-El instalador incluye Ultimate ASI Loader x64 para instalaciones sin `dinput8.dll`. Si actualiza archivos del mod, guarda los originales en la carpeta `UMVC3TrainingToolsInt-Backups`.
+### Atajos del mando
 
-Para generar el instalador a partir del ZIP de una versión del mod, indica su versión con `-Tag`. Por ejemplo, `.\installer\Build-Installer.ps1 -ModZip ruta-al-zip -Tag v0.9.3`.
+- Por defecto, **Vista / Select** abre Entrenamiento rápido desde el menú principal, **R3** abre la ventana del mod y **L3** reinicia el entrenamiento. Cambia o desactiva las asignaciones en **Atajos del mando**. Se guardan en `UMVC3TrainingToolsInt.ini`.
+- Mantén **izquierda/derecha** en la cruceta o el stick izquierdo al reiniciar para colocar a J2 en esa esquina. **Abajo** devuelve a ambos al centro y **arriba** intercambia sus posiciones de reinicio. Al reiniciar sin dirección se usa la posición del ejercicio activo o se repite el último reinicio direccional. Antes del primero se usan las posiciones de **Extra → Posiciones**.
+- Usa la cruceta o el stick izquierdo para navegar, **A / Cruz** para confirmar y **B / Círculo** para cerrar un desplegable o la ventana del mod. El mod admite XInput y los mandos que Steam Input presenta como XInput. Suelta los controles al cerrar la ventana antes de volver al combate.
 
-## Publicación en GitHub
+### Reportar un fallo
 
-Para compilar y verificar el `.exe` desde el código fuente, ejecuta `.\installer\Build-Release.ps1` en PowerShell. El script actualiza `installer/UMVC3TrainingToolsInt-Setup-vX.Y.Z.exe` con la versión del código.
+1. Reproduce el fallo y anota los pasos, qué esperabas y qué ocurrió. Indica la versión del mod y qué otros mods tenías activados. Si afecta a los controles, indica si usabas teclado o mando.
+2. Abre **Archivo → Abrir carpeta de registros** desde la ventana de F4 o F5. Si no puedes abrirla, busca en `logs` junto a `umvc3.exe` y después en `%TEMP%\UMVC3TrainingToolsInt\logs`.
+3. Recoge los registros pertinentes.
 
-En GitHub, abre **Actions → Instalador y release de UMVC3 → Run workflow** para generar un instalador de prueba. Puedes descargarlo en **Artifacts** de la ejecución. Las PR a `main` también generan ese artefacto.
+   - `UMVC3TrainingToolsInt-Teams.log` recoge el arranque, el acceso rápido, los presets, los cambios de equipo y los reinicios.
+   - `UMVC3TrainingToolsInt-Recording.log` recoge la entrada del mando, la grabación, la reproducción y las reacciones de J2. Si aparece **Archivo → Abrir carpeta de registros de grabación**, usa esa opción para encontrarlo.
+   - Si el registro actual empieza después del fallo, busca el archivo `.previous.log` correspondiente. Las horas se registran en UTC.
 
-Para publicar, aumenta `VersionTag` en `UMVC3TrainingToolsInt/code/ReleaseUpdate.h`, añade `changelog/vX.Y.Z.md` y fusiona la PR de `dev` a `main`. GitHub Actions compila el instalador, crea la etiqueta sobre el commit que compiló y publica la release estable con el changelog y `UMVC3TrainingToolsInt-Setup.exe`. El workflow omite versiones ya publicadas o anteriores a una release estable publicada.
+4. Abre una incidencia con los pasos y adjunta los archivos pertinentes. Si GitHub rechaza los archivos `.log`, comprímelos en un ZIP. [Incidencias en GitHub](https://github.com/AzeDev955/UMVC3TrainingToolsInt/issues)
 
-The next build will return to being internal.
+## Build and release / Compilación y publicación
 
-Explanations:
-================================================================================================================================
-Extra:
-- Restart To Intros: Plays the match the intros once more.
+Run `.\installer\Build-Release.ps1` from PowerShell to build Release x64 and verify that the installer contains the compiled ASI. It writes `installer/UMVC3TrainingToolsInt-Setup-vX.Y.Z.exe` using the source version. To package an existing mod ZIP, use `.\installer\Build-Installer.ps1 -ModZip path-to-zip -Tag vX.Y.Z`.
 
-- Restart to Ready: Restarts the Match to the point where the announcer yells READY!!!
+Ejecuta `.\installer\Build-Release.ps1` desde PowerShell para compilar Release x64 y comprobar que el instalador contiene el ASI compilado. El script genera `installer/UMVC3TrainingToolsInt-Setup-vX.Y.Z.exe` con la versión del código. Para empaquetar un ZIP existente, usa `.\installer\Build-Installer.ps1 -ModZip ruta-al-zip -Tag vX.Y.Z`.
 
-- Restart Training mode: Same as before.
+The **Instalador y release de UMVC3** workflow builds an artifact for PRs to `main` and for manual runs. To publish, update `VersionTag` in `UMVC3TrainingToolsInt/code/ReleaseUpdate.h`, add `changelog/vX.Y.Z.md`, and merge `dev` into `main` via a PR. The workflow tags the release commit and publishes `UMVC3TrainingToolsInt-Setup.exe` for the updater.
 
-- Positioning: Changes the start position of the players. The farthest left is -800 and the farthest right is 800. Below are preset buttons 
-that set the positions to specific common scenarios.
-
-Etc: 
-- Endless X Factor Toggles.
-
-Status:
-
-- Character HP: Should set Life Recovery off in the pause menu.
-
-- Health value gauges: Multiplier. 1.000 is full health, while 0.5 is half health. The Minimum is 0.01.
-
-- Changeable Hyper Meter. Each level of meter is 10,000. Max is 50,000 while minimum is 0.
-
-- Jamming Bomb/Reversed Controls: Should speak for itself, has no visuals but it works.
-
-================================================================================================================================
-Character:
-
-FRANK WEST
-- You can set Frank West's Level, and his Prestige Points will be set to the minimum required for that level.
-lvl 1 -   0PP
-lvl 2 -   5PP
-lvl 3 -  20PP
-lvl 4 -  50PP
-lvl 5 - 100PP
-
-PHOENIX WRIGHT
-- You can choose both Mr. Wright's Evidence and have a Turnabout Toggle. Iconography is off but functionally works.
-- Can choose to lock Evidence as well, letting you keep evidence regardless of Training Mode Restart, Turnabout Mode ending, discarding evidence.
-   
-MODOK
-- Can Control level of Understanding. Affects his Hyper Psionic Blaster and the Big Barrier.
-
-DORMAMMU
-- Can set level of spells and will lock it to level. Set both to 0 to return behavior to normal.
-
-DEADPOOL
-- Can set Teleport Counter and can lock it to that number.
-
-- Also included is an Endless Install toggle that should work with all installs from the default cast excluding Vale of Mist.
-
-Lastly there's File->Reset to Default which will change all the above settings back to their default values.
-
-Notes:
-================================================================================================================================
-Dark Phoenix lacks the low wind sound when using the Dark Phoenix Toggle.
-Mr. Wright lacks the Gold Aura when using the Turnabout Toggle.
-Frank West will keep the level 5 aura when changing his level from 5 to <5. That's not something that can happen
-normally in game so there's no real code to handle that. Just restart Training Mode at that point.
-MODOK's head flame won't update visuals when setting Level of Understanding.
-The Endless Install/X Factor locks the timers at a silly high value, so turning it off WILL allow the timer to decrement, but the timer
-is so large it may be wiser to just restart training mode.
-
-Thanks to HKHaan, Sheep, Techs, anotak, and Ermaccer for their contributions that made this and all previous incarnations of this possible.
-
-Features will be added to the next release when they are confirmed working problem free.
+El workflow **Instalador y release de UMVC3** genera un artefacto para las PR a `main` y para las ejecuciones manuales. Para publicar, actualiza `VersionTag` en `UMVC3TrainingToolsInt/code/ReleaseUpdate.h`, añade `changelog/vX.Y.Z.md` y fusiona `dev` en `main` mediante una PR. El workflow etiqueta el commit y publica `UMVC3TrainingToolsInt-Setup.exe` para el actualizador.

@@ -7,6 +7,9 @@ ACTIVATED_NOTINMATCH,Choose the characters and get into a match.,Elige los perso
 ACTIVATED_INMAINMENU,Get to Training Mode so this tool can do its thing.,Entra en el modo Entrenamiento para usar la herramienta.
 MENU_FILE,File,Archivo
 FILE_RESETSETTINGS,Reset Settings To Default,Restablecer ajustes
+LOG_OPEN_FOLDER,Open logs folder,Abrir carpeta de registros
+LOG_OPEN_RECORDING_FOLDER,Open recording logs folder,Abrir carpeta de registros de grabación
+LOG_OPEN_FAILED,Windows could not open the logs folder.,Windows no pudo abrir la carpeta de registros.
 MENU_MISC,Misc,Varios
 MISC_ABOUT,About,Acerca de
 P1_EXTRA,Extra,Extra
@@ -240,7 +243,7 @@ REC_INVALID,The recording file is invalid. Its size must be a multiple of 550 by
 UI_WINDOW_CLASS,Could not register the tool window class.,No se pudo registrar la clase de ventana del mod.
 UI_WINDOW_CREATE,Could not create the tool window.,No se pudo crear la ventana del mod.
 TEAM_TAB,Teams,Equipos
-TEAM_INFO,"Edit fighters and assists, then apply the changes in Training.","Cambia los personajes y asistencias, y aplica los cambios en Entrenamiento."
+TEAM_INFO,"Edit fighters, assists, and colors, then apply the changes in Training.","Cambia personajes, asistencias y colores, y aplica los cambios en Entrenamiento."
 TEAM_LOG,Log: %s,Registro de diagnóstico: %s
 TEAM_NO_LOG,Could not create the team editor log.,No se pudo crear el registro del editor de equipos.
 TEAM_NEED_MATCH,Enter a Training match with the standard roster to edit teams.,Entra en una partida de Entrenamiento con la plantilla estándar para editar equipos.
@@ -248,8 +251,13 @@ TEAM_APPLY,Apply and reload,Aplicar y recargar
 TEAM_RESET_DRAFT,Reset draft,Restablecer selección
 TEAM_PLAYER1,Player 1,Jugador 1
 TEAM_PLAYER2,Player 2,Jugador 2
-TEAM_SLOT,Slot %d,Puesto %d
+TEAM_FIGHTER,Fighter,Personaje
 TEAM_ASSIST,Assist,Asistencia
+TEAM_COLOR,Color,Color
+TEAM_COLOR_AUTO,Automatic,Automático
+TEAM_COLOR_CURRENT,Current,Actual
+TEAM_COLOR_ALT,Alternate costume,Traje alternativo
+TEAM_COLOR_ALT_MISSING,Alternate costume unavailable,Traje alternativo no disponible
 TEAM_UNKNOWN_ASSIST,Unknown,Desconocida
 TEAM_ALPHA,Alpha,Alfa
 TEAM_BETA,Beta,Beta
@@ -258,13 +266,13 @@ TEAM_UNAVAILABLE,Team reload is unavailable for this executable.,Este ejecutable
 TEAM_STOP_RECORDING,Stop recording or playback before editing teams.,Detén la grabación o reproducción antes de editar los equipos.
 TEAM_WAIT,Wait until both teams are ready and the round has started.,Espera a que ambos equipos estén listos y empiece el combate.
 TEAM_DISTINCT,Choose three different fighters per team.,Elige tres personajes distintos por equipo.
-TEAM_NO_CHANGE,"Change a fighter, assist, or team order first.","Cambia primero un personaje, una asistencia o el orden."
+TEAM_NO_CHANGE,"Change a fighter, assist, color, or team order first.","Cambia primero un personaje, una asistencia, un color o el orden."
 TEAM_RELOAD_WAIT,Reload requested. Waiting for the game to load the teams...,Esperando a que el juego recargue los equipos…
 TEAM_MATCH_ENDED,The Training match ended. Changes are no longer pending.,La partida de Entrenamiento terminó y se descartaron los cambios pendientes.
 TEAM_NEW_MATCH,New Training match detected.,Se ha detectado una partida nueva de Entrenamiento.
-TEAM_VERIFIED,Loaded fighters and assists match the requested teams.,Los personajes y asistencias coinciden con los equipos elegidos.
-TEAM_VERIFY_FIGHTER,Assists verified. Check the new fighter in-game.,Asistencias comprobadas. Revisa el nuevo personaje en el juego.
-TEAM_ORIGINAL_RESTORED,The game kept the original fighters and assists. Original selection restored.,El juego conservó los personajes y asistencias. Se restauró la selección original.
+TEAM_VERIFIED,The loaded teams match the selected fighters and settings.,Los equipos cargados coinciden con los personajes y ajustes elegidos.
+TEAM_VERIFY_FIGHTER,Assists and color changes verified. Check the new fighter in-game.,Asistencias y cambios de color comprobados. Revisa el nuevo personaje en el juego.
+TEAM_ORIGINAL_RESTORED,The game kept the original teams. Original selection restored.,El juego conservó los equipos originales. Se restauró la selección original.
 TEAM_RELOAD_TIMEOUT,The Training reload did not finish. See the log.,La recarga de Entrenamiento no terminó. Consulta el registro.
 TEAM_NO_CONFIRMATION,Could not confirm the loaded teams. See the log.,No se pudieron confirmar los equipos cargados. Consulta el registro.
 TEAM_RESTORE_OK,Could not apply the change. Original settings restored.,No se pudo aplicar el cambio. Se restauraron los ajustes originales.
@@ -272,31 +280,48 @@ QUICK_TITLE,Quick Training,Entrenamiento rápido
 QUICK_STAGE,Stage,Escenario
 QUICK_START,Start Training,Iniciar entrenamiento
 QUICK_DIRECT_LAUNCH,Direct launch (experimental),Carga directa (experimental)
-QUICK_DIRECT_ONLY,Quick Training uses direct launch because the native menus are modified.,El acceso rápido usa la carga directa porque los menús del juego se han modificado.
+QUICK_DIRECT_ONLY,Quick Training uses direct launch because launching through the game menus is unavailable.,El acceso rápido usa la carga directa porque no está disponible el acceso a través de los menús del juego.
 QUICK_LOADING,Loading Training…,Cargando entrenamiento…
 QUICK_RETURN_MAIN,Return to the main menu to start a Training match.,Vuelve al menú principal para iniciar una partida de Entrenamiento.
 QUICK_COMPLETE_TEAMS,Choose three different fighters and an assist for each team.,Elige tres personajes distintos por equipo y una asistencia para cada personaje.
-PRESET_DIR_MISSING,Could not find the Quick Training preset folder.,No se encontró la carpeta de equipos guardados.
-PRESET_DIR_OPEN,Could not open the Quick Training preset folder.,No se pudo abrir la carpeta de equipos guardados.
-PRESET_READ_FAILED,Some Quick Training presets could not be read.,No se pudieron leer algunos equipos guardados.
-PRESET_LIST_FAILED,Could not list all Quick Training presets.,No se pudieron listar todos los equipos guardados.
+QUICK_ALT_UNAVAILABLE,Choose another color for any fighter whose alternate costume is unavailable.,Elige otro color para los personajes que no tienen disponible el traje alternativo.
+QUICK_EXERCISE,Include exercise settings,Incluir ajustes del ejercicio
+QUICK_EXERCISE_SETTINGS,Configure exercise,Configurar ejercicio
+QUICK_EXERCISE_INVALID,Apply a valid command for each custom reaction.,Aplica un comando válido en cada reacción personalizada.
+QUICK_RESET_POSITION,Reset position,Posición de reinicio
+QUICK_RESET_CENTER,Center,Centro
+QUICK_RESET_LEFT,P2 in the left corner,J2 en la esquina izquierda
+QUICK_RESET_RIGHT,P2 in the right corner,J2 en la esquina derecha
+PRESET_DIR_MISSING,Could not find the Quick Training preset folder.,No se encontró la carpeta de presets de entrenamiento.
+PRESET_DIR_OPEN,Could not open the Quick Training preset folder.,No se pudo abrir la carpeta de presets de entrenamiento.
+PRESET_READ_FAILED,Some Quick Training presets could not be read.,No se pudieron leer algunos presets.
+PRESET_LIST_FAILED,Could not list all Quick Training presets.,No se pudieron listar todos los presets.
 PRESET_EDIT_FAILED,Could not open the preset folder for editing. Try again.,No se pudo abrir la carpeta para editar. Inténtalo de nuevo.
-PRESET_CHANGED,The saved preset changed. Load it again to edit it.,El equipo guardado cambió. Cárgalo de nuevo para editarlo.
-PRESET_NAME_INVALID,Enter a preset name without ##.,Escribe un nombre para el equipo sin ##.
-PRESET_SAVE_FAILED,Could not save the preset.,No se pudo guardar el equipo.
-PRESET_RENAME_RESTORED,Could not rename the preset. The original was kept.,No se pudo cambiar el nombre. Se conservó el equipo original.
-PRESET_UPDATED,Preset updated.,Equipo actualizado.
-PRESET_SAVED,Preset saved.,Equipo guardado.
-PRESET_DELETE_FAILED,Could not delete the preset.,No se pudo borrar el equipo.
-PRESET_DELETED,Preset deleted.,Equipo borrado.
-PRESET_LOADED,Preset loaded.,Equipo cargado.
-PRESET_LOAD,Load preset,Cargar equipo guardado
-PRESET_NAME,Preset name,Nombre del equipo
+PRESET_CHANGED,The saved preset changed. Load it again to edit it.,El preset guardado cambió. Cárgalo de nuevo para editarlo.
+PRESET_NAME_INVALID,Enter a preset name without ##.,Escribe un nombre para el preset sin ##.
+PRESET_SAVE_FAILED,Could not save the preset.,No se pudo guardar el preset.
+PRESET_RENAME_RESTORED,Could not rename the preset. The original was kept.,No se pudo cambiar el nombre. Se conservó el preset original.
+PRESET_UPDATED,Preset updated.,Preset actualizado.
+PRESET_SAVED,Preset saved.,Preset guardado.
+PRESET_DELETE_FAILED,Could not delete the preset.,No se pudo borrar el preset.
+PRESET_DELETED,Preset deleted.,Preset borrado.
+PRESET_LOADED,Preset loaded.,Preset cargado.
+PRESET_LOAD,Load preset,Cargar preset
+PRESET_NAME,Preset name,Nombre del preset
+PRESET_TAB,Preset,Preset
+PRESET_APPLY,Apply preset,Aplicar preset
+PRESET_APPLY_CURRENT_STAGE,Apply on current stage,Aplicar en el escenario actual
+PRESET_APPLIED,Preset applied.,Preset aplicado.
+PRESET_SAVED_STAGE,Saved stage: %s,Escenario guardado: %s
+PRESET_STAGE_FROM_MAIN,To use the saved stage open Quick Training from the main menu with F4.,Para usar el escenario guardado abre Entrenamiento rápido con F4 desde el menú principal.
+PRESET_SAVE_CURRENT,Save current setup,Guardar configuración actual
+PRESET_STAGE_UNKNOWN,This stage cannot be saved in a preset.,Este escenario no se puede guardar en un preset.
+PRESET_RECORDING_UNSUPPORTED,Choose grid moves or custom commands for the dummy reactions before saving an exercise.,Para guardar el ejercicio usa movimientos de la cuadrícula o comandos personalizados en las reacciones de J2.
 PRESET_SAVE_NEW,Save as new,Guardar como nuevo
-PRESET_SAVE,Save preset,Guardar equipo
-PRESET_UPDATE,Update preset,Actualizar equipo
-PRESET_DELETE,Delete preset,Borrar equipo
-PRESET_DELETE_TITLE,Delete team preset,Borrar equipo guardado
+PRESET_SAVE,Save preset,Guardar preset
+PRESET_UPDATE,Update preset,Actualizar preset
+PRESET_DELETE,Delete preset,Borrar preset
+PRESET_DELETE_TITLE,Delete Training preset,Borrar preset de entrenamiento
 PRESET_DELETE_QUESTION,"Delete ""%s""?",¿Borrar «%s»?
 PRESET_DELETE_CONFIRM,Delete,Borrar
 PAD_DISABLED,Disabled,Desactivado
@@ -325,8 +350,8 @@ PAD_LB,LB / L1,LB / L1
 PAD_RB,RB / R1,RB / R1
 PAD_LT,LT / L2,LT / L2
 PAD_RT,RT / R2,RT / R2
-PRESET_RENAME_DUPLICATE,Could not remove the original preset. Both names are still available.,No se pudo borrar el equipo original. Ambos nombres siguen disponibles.
-PRESET_DUPLICATE,A preset with that name already exists.,Ya existe un equipo con ese nombre.
+PRESET_RENAME_DUPLICATE,Could not remove the original preset. Both names are still available.,No se pudo borrar el preset original. Ambos nombres siguen disponibles.
+PRESET_DUPLICATE,A preset with that name already exists.,Ya existe un preset con ese nombre.
 TEAM_RESTORE_FAILED,Could not restore the original settings. Start a fresh Training match.,No se pudieron restaurar los ajustes originales. Inicia una nueva partida de Entrenamiento.
 UI_HP_P1C1,P1C1 HP %,Vida J1 P1 %
 UI_HP_P1C2,P1C2 HP %,Vida J1 P2 %
