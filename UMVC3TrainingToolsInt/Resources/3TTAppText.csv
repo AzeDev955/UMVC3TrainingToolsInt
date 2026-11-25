@@ -7,6 +7,9 @@ ACTIVATED_NOTINMATCH,Choose the characters and get into a match.,Elige los perso
 ACTIVATED_INMAINMENU,Get to Training Mode so this tool can do its thing.,Entra en el modo Entrenamiento para usar la herramienta.
 MENU_FILE,File,Archivo
 FILE_RESETSETTINGS,Reset Settings To Default,Restablecer ajustes
+DISPLAY_BORDERLESS,Borderless fullscreen,Pantalla completa sin bordes
+DISPLAY_RESTART_REQUIRED,Restart the game to apply the display setting.,Reinicia el juego para aplicar el ajuste de pantalla.
+DISPLAY_SAVE_FAILED,Could not save the display setting.,No se pudo guardar el ajuste de pantalla.
 LOG_OPEN_FOLDER,Open logs folder,Abrir carpeta de registros
 LOG_OPEN_RECORDING_FOLDER,Open recording logs folder,Abrir carpeta de registros de grabación
 LOG_OPEN_FAILED,Windows could not open the logs folder.,Windows no pudo abrir la carpeta de registros.

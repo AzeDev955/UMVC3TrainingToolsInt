@@ -1006,17 +1006,14 @@ void TrainingShortcut::DispatchTraining()
 	request.store(queuedDirect ? Request::OpenDirect : Request::OpenOffline);
 }
 
-void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
+void TrainingShortcut::Initialize(HWND window)
 {
+	toolWindow = window;
 	originalMainUpdate = reinterpret_cast<MenuUpdate>(GameAddress(0x1403e74f0));
 	originalOfflineUpdate = reinterpret_cast<MenuUpdate>(GameAddress(0x1403e6b80));
 	constexpr std::array<uint8_t, 8> selectSignature{ 0x40, 0x56, 0x57, 0x48, 0x83, 0xec, 0x58, 0x48 };
 	constexpr std::array<uint8_t, 8> finishSignature{ 0x48, 0x63, 0xc2, 0xc7, 0x84, 0x81, 0xb4, 0x02 };
 	constexpr std::array<uint8_t, 8> stageSignature{ 0x40, 0x57, 0x48, 0x83, 0xec, 0x20, 0x80, 0x79 };
-	D3DDEVICE_CREATION_PARAMETERS parameters{};
-	if (toolDevice && SUCCEEDED(toolDevice->GetCreationParameters(&parameters)))
-		toolWindow = parameters.hFocusWindow;
-
 	const bool nativeMenuSignaturesMatch =
 		PointerAt(GameAddress(MainMenuTable) + MenuSetStateSlot) == GameAddress(MainMenuSetState)
 		&& PointerAt(GameAddress(OfflineMenuTable) + MenuSetStateSlot) == GameAddress(OfflineMenuSetState)
@@ -1085,12 +1082,13 @@ void TrainingShortcut::Initialize(IDirect3DDevice9* toolDevice)
 		TrainingTeamEditor::TraceQuickShortcut("F4 available with direct Training launch only");
 	shortcutAvailable.store(true);
 	TrainingTeamEditor::TraceQuickShortcut("native hooks ready; polling F4 independently of the overlay");
+}
 
-	if (!toolDevice || !toolWindow)
-	{
-		TrainingTeamEditor::TraceQuickShortcut("menu overlay unavailable: no tool Direct3D window");
+void TrainingShortcut::InitializeOverlay(IDirect3DDevice9* toolDevice)
+{
+	if (!shortcutAvailable.load())
 		return;
-	}
+	void* original = nullptr;
 	void* endSceneTarget = (*reinterpret_cast<void***>(toolDevice))[EndSceneSlot];
 	const auto createOverlay = MH_CreateHook(endSceneTarget, reinterpret_cast<void*>(DrawGameMenu), &original);
 	if (createOverlay == MH_OK)

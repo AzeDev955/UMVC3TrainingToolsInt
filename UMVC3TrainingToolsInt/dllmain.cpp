@@ -19,6 +19,9 @@
 #include "code/ReleaseUpdate.h"
 #include "commdlg.h"
 #include <algorithm>
+#include <atomic>
+#include <cstring>
+#include <cwchar>
 //#include "code\umvc3_sMvc3Main.h"
 //#define _CRTDBG_MAP_ALLOC
 //#include <stdlib.h>
@@ -48,6 +51,157 @@ LPDIRECT3DDEVICE9 D3ddev = NULL;
 RECT clientRect;
 D3DPRESENT_PARAMETERS d3dpp;
 
+namespace
+{
+	using ReadProfileString = decltype(&GetPrivateProfileStringA);
+	ReadProfileString readGameProfile = nullptr;
+	std::atomic<int> startupBorderlessPreference{ -1 };
+	std::atomic<bool> borderlessRequested{ false };
+	wchar_t displayPreferencesPath[MAX_PATH]{};
+	constexpr wchar_t DisplaySection[] = L"Display";
+	constexpr wchar_t BorderlessKey[] = L"BorderlessFullscreen";
+
+	UINT BorderlessPreference()
+	{
+		return displayPreferencesPath[0] ? GetPrivateProfileIntW(DisplaySection, BorderlessKey, 2, displayPreferencesPath) : 2;
+	}
+
+	bool SaveBorderlessPreference(bool enabled)
+	{
+		return displayPreferencesPath[0]
+			&& WritePrivateProfileStringW(DisplaySection, BorderlessKey, enabled ? L"1" : L"0", displayPreferencesPath);
+	}
+
+	bool BorderlessActive()
+	{
+		return borderlessRequested.load();
+	}
+
+	DWORD WINAPI ReadGameDisplayProfile(const char* section, const char* key, const char* fallback,
+		char* value, DWORD capacity, const char* path)
+	{
+		const auto length = readGameProfile(section, key, fallback, value, capacity, path);
+		if (section && key && value && capacity >= sizeof("OFF")
+			&& !_stricmp(section, "DISPLAY") && !_stricmp(key, "FullScreen"))
+		{
+			const bool nativeFullscreen = length == 2 && !_stricmp(value, "ON");
+			int unresolved = -1;
+			if (startupBorderlessPreference.load() == unresolved)
+				startupBorderlessPreference.compare_exchange_strong(unresolved, BorderlessPreference());
+			const int preference = startupBorderlessPreference.load();
+			if (preference == 1 || (preference == 2 && nativeFullscreen))
+				borderlessRequested.store(true);
+			if (nativeFullscreen)
+			{
+				std::memcpy(value, "OFF", sizeof("OFF"));
+				return 3;
+			}
+		}
+		return length;
+	}
+
+	void HookGameDisplayProfile(HMODULE module)
+	{
+		const auto length = GetModuleFileNameW(module, displayPreferencesPath, MAX_PATH);
+		auto* filename = length && length < MAX_PATH ? std::wcsrchr(displayPreferencesPath, L'\\') : nullptr;
+		if (!filename || wcscpy_s(filename + 1, std::size(displayPreferencesPath) - (filename + 1 - displayPreferencesPath),
+			L"UMVC3TrainingToolsInt.ini"))
+			displayPreferencesPath[0] = L'\0';
+		// Patch the game's import before it reads its display profile.
+		const auto base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+		if (!base)
+			return;
+		const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+		const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+		if (dos->e_magic != IMAGE_DOS_SIGNATURE || nt->Signature != IMAGE_NT_SIGNATURE)
+			return;
+		const auto directory = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+		if (!directory.VirtualAddress)
+			return;
+		const auto* entry = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR*>(base + directory.VirtualAddress);
+		for (; entry->Name; ++entry)
+		{
+			if (!entry->OriginalFirstThunk || _stricmp(reinterpret_cast<const char*>(base + entry->Name), "kernel32.dll"))
+				continue;
+			const auto* name = reinterpret_cast<const IMAGE_THUNK_DATA*>(base + entry->OriginalFirstThunk);
+			auto* slot = reinterpret_cast<ReadProfileString*>(base + entry->FirstThunk);
+			for (; name->u1.AddressOfData; ++name, ++slot)
+			{
+				if (IMAGE_SNAP_BY_ORDINAL(name->u1.Ordinal))
+					continue;
+				const auto* symbol = reinterpret_cast<const IMAGE_IMPORT_BY_NAME*>(base + name->u1.AddressOfData);
+				if (std::strcmp(reinterpret_cast<const char*>(symbol->Name), "GetPrivateProfileStringA"))
+					continue;
+				DWORD protection = 0;
+				if (VirtualProtect(slot, sizeof(*slot), PAGE_READWRITE, &protection))
+				{
+					readGameProfile = *slot;
+					*slot = &ReadGameDisplayProfile;
+					VirtualProtect(slot, sizeof(*slot), protection, &protection);
+				}
+				return;
+			}
+		}
+	}
+
+	BOOL CALLBACK FindBorderlessGameWindow(HWND window, LPARAM result)
+	{
+		DWORD pid = 0;
+		wchar_t title[64]{};
+		if (IsWindowVisible(window) && GetWindowThreadProcessId(window, &pid) && pid == GetCurrentProcessId()
+			&& GetWindowTextW(window, title, static_cast<int>(std::size(title)))
+			&& !_wcsicmp(title, L"ULTIMATE MARVEL VS. CAPCOM 3"))
+		{
+			*reinterpret_cast<HWND*>(result) = window;
+			return FALSE;
+		}
+		return TRUE;
+	}
+
+	void ApplyBorderlessFullscreen()
+	{
+		if (!BorderlessActive())
+			return;
+		static ULONGLONG nextCheck = 0;
+		const auto now = GetTickCount64();
+		if (now < nextCheck)
+			return;
+		nextCheck = now + 250;
+		HWND window = nullptr;
+		EnumWindows(FindBorderlessGameWindow, reinterpret_cast<LPARAM>(&window));
+		if (!window || IsIconic(window))
+			return;
+		MONITORINFO monitor{ sizeof(MONITORINFO) };
+		if (!GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor))
+			return;
+
+		const auto style = GetWindowLongPtrW(window, GWL_STYLE);
+		const auto borderlessStyle = (style & ~WS_OVERLAPPEDWINDOW) | WS_POPUP;
+		const auto& bounds = monitor.rcMonitor;
+		RECT windowBounds{};
+		if (style == borderlessStyle && GetWindowRect(window, &windowBounds) && EqualRect(&windowBounds, &bounds))
+			return;
+
+		SetLastError(ERROR_SUCCESS);
+		if (!SetWindowLongPtrW(window, GWL_STYLE, borderlessStyle) && GetLastError())
+			return;
+		if (!SetWindowPos(window, nullptr, bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top,
+			SWP_NOACTIVATE | SWP_NOZORDER | SWP_FRAMECHANGED))
+		{
+			SetWindowLongPtrW(window, GWL_STYLE, style);
+			return;
+		}
+		static bool checkedPreference = false;
+		if (!checkedPreference)
+		{
+			checkedPreference = true;
+			if (BorderlessPreference() == 2 && !SaveBorderlessPreference(true))
+				TrainingTeamEditor::TraceWindowRenderer("could not save borderless preference", HRESULT_FROM_WIN32(GetLastError()));
+		}
+		TrainingTeamEditor::TraceWindowRenderer("game borderless fullscreen applied", S_OK);
+	}
+}
+
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -73,11 +227,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 }
 
-static bool CreateD3DDevice(HWND hWnd)
+static HRESULT CreateD3DDevice(HWND hWnd)
 {
 	//Checks for valid Direct3D9 version.
 	D3d = Direct3DCreate9(D3D_SDK_VERSION);
-	if (D3d == nullptr) { return false; }
+	if (D3d == nullptr)
+		return D3DERR_NOTAVAILABLE;
 
 	//Gets the Current Window's size.
 	GetClientRect(hWnd, &clientRect);
@@ -96,11 +251,8 @@ static bool CreateD3DDevice(HWND hWnd)
 	d3dpp.hDeviceWindow = hWnd;
 
 	auto deviceParameters = d3dpp;
-	if (D3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd,
-		D3DCREATE_SOFTWARE_VERTEXPROCESSING, &deviceParameters, &D3ddev) < 0)
-		return false;
-
-	return true;
+	return D3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd,
+		D3DCREATE_SOFTWARE_VERTEXPROCESSING, &deviceParameters, &D3ddev);
 }
 
 static void CleanupD3DDevice() {
@@ -231,6 +383,7 @@ static void TheAboutWindow(bool* p_open)
 static void TheMenuBar()
 {
 	static bool languageSaveFailed = false;
+	static const char* displayStatus = nullptr;
 	if (ShowAboutWindow) TheAboutWindow(&ShowAboutWindow);
 
 	if (ImGui::BeginMenuBar())
@@ -238,6 +391,10 @@ static void TheMenuBar()
 		if (ImGui::BeginMenu(UiText("MENU_FILE")))
 		{
 			TrainingTeamEditor::DrawLogMenu();
+			const auto preference = BorderlessPreference();
+			const bool borderless = preference == 1 || (preference == 2 && BorderlessActive());
+			if (ImGui::MenuItem(UiText("DISPLAY_BORDERLESS"), nullptr, borderless))
+				displayStatus = SaveBorderlessPreference(!borderless) ? "DISPLAY_RESTART_REQUIRED" : "DISPLAY_SAVE_FAILED";
 			if (ImGui::MenuItem(UiText("FILE_RESETSETTINGS")))
 			{
 				ResetSettings();
@@ -268,6 +425,8 @@ static void TheMenuBar()
 
 	if (languageSaveFailed)
 		ImGui::TextWrapped("%s", UiText("UI_LANGUAGE_SAVE_FAILED"));
+	if (displayStatus)
+		ImGui::TextWrapped("%s", UiText(displayStatus));
 }
 
 static void TheExtraOptionsTab()
@@ -5143,6 +5302,10 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 
 	//Waits a hot moment to ensure that the game's own D3D device is active before doing anything.
 	Sleep(3000);
+	TrainingTeamEditor::TraceWindowRenderer(BorderlessActive()
+		? "game requested fullscreen; using borderless windowed mode" : "no fullscreen profile override requested",
+		readGameProfile ? S_OK : E_FAIL);
+	ApplyBorderlessFullscreen();
 
 	// Starts Constructing a separate window to open. Based on code from deleted account xyzzy on cpluscplus.
 	static const TCHAR WindowName_sz[] = TEXT("TT Port Powered by Imgui");
@@ -5168,19 +5331,6 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		return E_FAIL;
 	}
 
-	//Time to initialize DirectX9. Returns 1 if it fails.
-	if (!CreateD3DDevice(hWnd))
-	{
-		TrainingTeamEditor::TraceWindowRenderer("create tool Direct3D device failed", E_FAIL);
-		CleanupD3DDevice();
-		UnregisterClass(wc.lpszClassName, wc.hInstance);
-		return 1;
-	}
-
-	//Now to show the window.
-	ShowWindow(hWnd, SW_SHOWDEFAULT);
-	UpdateWindow(hWnd);
-
 	//Gets the HWND window size.
 	RECT clientRect;
 	GetClientRect(hWnd, &clientRect);
@@ -5204,10 +5354,30 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 
 	ImGui::StyleColorsDark();
 	ImGui_ImplWin32_Init(hWnd);
-	ImGui_ImplDX9_Init(D3ddev);
-	TrainingShortcut::Initialize(D3ddev);
+	TrainingShortcut::Initialize(hWnd);
 	TrainingPad::Initialize(static_cast<HMODULE>(lpReserved), hWnd);
-	ReleaseUpdate::CheckAtStartup(hWnd);
+	ULONGLONG nextRendererAttempt = 0;
+	const auto ensureToolRenderer = [&]()
+	{
+		if (D3ddev)
+			return true;
+		const auto now = GetTickCount64();
+		if (now < nextRendererAttempt)
+			return false;
+		nextRendererAttempt = now + 500;
+		const auto result = CreateD3DDevice(hWnd);
+		ReportToolRenderResult("create tool Direct3D device failed", result);
+		if (FAILED(result))
+		{
+			CleanupD3DDevice();
+			return false;
+		}
+		ImGui_ImplDX9_Init(D3ddev);
+		TrainingShortcut::InitializeOverlay(D3ddev);
+		ReleaseUpdate::CheckAtStartup(hWnd);
+		return true;
+	};
+	ensureToolRenderer();
 	bool quickTrainingSetup = false;
 	bool recordingHookInstalled = false;
 	std::optional<TrainingTeamEditor::XPositions> previousDirectionalReset;
@@ -5229,6 +5399,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 			continue;
 		}
 
+		ApplyBorderlessFullscreen();
 		const auto foreground = GetForegroundWindow();
 		DWORD foregroundPid = 0;
 		const bool gameFocused = foreground && foreground != hWnd
@@ -5333,6 +5504,7 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 		const int width = clientRect.right - clientRect.left;
 		const int height = clientRect.bottom - clientRect.top;
 		if (width <= 0 || height <= 0 || IsIconic(hWnd)
+			|| !ensureToolRenderer()
 			|| !PrepareToolRenderer(static_cast<UINT>(width), static_cast<UINT>(height)))
 		{
 			Sleep(16);
@@ -5481,7 +5653,8 @@ DWORD WINAPI MainThread(LPVOID lpReserved)
 	}
 
 	TrainingPad::Shutdown();
-	ImGui_ImplDX9_Shutdown();
+	if (D3ddev)
+		ImGui_ImplDX9_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 
@@ -5501,6 +5674,7 @@ BOOL APIENTRY DllMain(HMODULE hMod, DWORD dwReason, LPVOID lpReserved)
 		if (CheckGame())
 		{
 			DisableThreadLibraryCalls(hMod);
+			HookGameDisplayProfile(hMod);
 			CreateThread(nullptr, 0, MainThread, hMod, 0, nullptr);
 			//_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 

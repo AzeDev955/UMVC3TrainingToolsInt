@@ -14,7 +14,7 @@ Este fork parte del mod de EternalYoshi. Gracias a EternalYoshi, HKHaan, Sheep, 
 
 The installer adds the x64 ASI Loader if `dinput8.dll` is missing and backs up replaced files in `UMVC3TrainingToolsInt-Backups`. At startup the mod checks GitHub Releases. If you accept an update, it downloads and verifies the installer, closes the game, installs the update, and relaunches the game. Windows may request administrator permission for protected folders.
 
-Use windowed mode if the tools window fails to open in exclusive fullscreen. Timestone can provide a borderless fullscreen window.
+If the game is set to fullscreen on first launch, the mod opens it in borderless fullscreen so the F4 and F5 windows can use Direct3D. To switch between windowed and borderless fullscreen, use **File → Borderless fullscreen** and restart the game.
 
 ### Quick Training and presets
 
@@ -70,7 +70,7 @@ Some effects keep their original visual or audio state when set by the mod, incl
 
 El instalador añade el cargador ASI x64 si falta `dinput8.dll` y guarda los archivos reemplazados en `UMVC3TrainingToolsInt-Backups`. Al iniciar, el mod consulta GitHub Releases. Si aceptas una actualización, descarga y verifica el instalador, cierra el juego, instala la versión y vuelve a abrirlo. Windows puede solicitar permisos de administrador si la carpeta está protegida.
 
-Usa el modo ventana si la ventana del mod no se abre en pantalla completa exclusiva. Timestone permite jugar en una ventana a pantalla completa sin bordes.
+Si el juego está configurado en pantalla completa al arrancar por primera vez, el mod lo abre a pantalla completa sin bordes para que las ventanas de F4 y F5 puedan usar Direct3D. Para alternar entre modo ventana y pantalla completa sin bordes, usa **Archivo → Pantalla completa sin bordes** y reinicia el juego.
 
 ### Entrenamiento rápido y presets
 

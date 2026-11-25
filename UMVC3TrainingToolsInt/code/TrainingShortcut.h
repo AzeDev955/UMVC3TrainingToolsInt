@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Windows.h>
 #include <array>
 #include <cstdint>
 
@@ -22,7 +23,8 @@ namespace TrainingShortcut
 	using TeamPicks = std::array<FighterPick, 6>;
 	constexpr int StageCount = 18;
 
-	void Initialize(IDirect3DDevice9* toolDevice);
+	void Initialize(HWND window);
+	void InitializeOverlay(IDirect3DDevice9* toolDevice);
 	bool TakeSetupRequest(bool controllerPressed);
 	bool CanLaunchViaNativeMenus();
 	bool CanLaunchDirectly();
