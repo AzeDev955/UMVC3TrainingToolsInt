@@ -255,6 +255,7 @@ namespace
 		std::optional<TrainingTeamEditor::XPositions> positions;
 		ULONGLONG started{};
 		bool waitLogged = false;
+		bool initialPlacement = false;
 	};
 
 	Match draftFrom;
@@ -1343,9 +1344,10 @@ namespace
 		}
 	}
 
-	void BeginRestart(const Match& match, std::optional<TrainingTeamEditor::XPositions> positions, const char* source)
+	void BeginRestart(const Match& match, std::optional<TrainingTeamEditor::XPositions> positions, const char* source,
+		bool initialPlacement = false)
 	{
-		pendingRestart = { match.settings, match.action, 0, positions, GetTickCount64() };
+		pendingRestart = { match.settings, match.action, 0, positions, GetTickCount64(), false, initialPlacement };
 		const auto target = positions.value_or(TrainingTeamEditor::XPositions{ p1Pos, p2Pos });
 		Log(0, "restart: started source=%s target_p1=%.1f target_p2=%.1f", source, target.p1, target.p2);
 	}
@@ -1430,6 +1432,9 @@ void TrainingTeamEditor::ApplyQuickExercise(uintptr_t action)
 	if (exercise)
 	{
 		ApplyExercise(action, *exercise);
+		Match match;
+		if (ReadMatch(match) && match.action == action)
+			BeginRestart(match, quickExerciseReset, "quick exercise initial position", true);
 		TraceQuickShortcut("exercise applied: reset position and dummy reactions ready");
 	}
 	else
@@ -1534,9 +1539,15 @@ void TrainingTeamEditor::UpdateTrainingRestart(bool watchNativeRestart)
 		*(float*)(P2Character1Data + 0x50) = positions.p2;
 		*(float*)(P2Character2Data + 0x50) = positions.p2;
 		*(float*)(P2Character3Data + 0x50) = positions.p2;
+		Log(0, "restart: positions applied p1=%.1f p2=%.1f initial_placement=%d", positions.p1, positions.p2,
+			pendingRestart.initialPlacement);
+		if (pendingRestart.initialPlacement)
+		{
+			pendingRestart = {};
+			return;
+		}
 		// Only the remaining settings need the settle delay.
 		pendingRestart.readyAt = now + RestartSettleMs;
-		Log(0, "restart: positions applied p1=%.1f p2=%.1f", positions.p1, positions.p2);
 		return;
 	}
 
