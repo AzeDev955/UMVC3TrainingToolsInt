@@ -14,6 +14,8 @@ Este fork parte del mod de EternalYoshi. Gracias a EternalYoshi, HKHaan, Sheep, 
 
 The installer adds the x64 ASI Loader if `dinput8.dll` is missing and backs up replaced files in `UMVC3TrainingToolsInt-Backups`. At startup the mod checks GitHub Releases. If you accept an update, it downloads and verifies the installer, closes the game, installs the update, and relaunches the game. Windows may request administrator permission for protected folders.
 
+Use windowed mode if the tools window fails to open in exclusive fullscreen. Timestone can provide a borderless fullscreen window.
+
 ### Quick Training and presets
 
 - In the main menu, press **F4** to open **Quick Training**. Choose the stage and three different fighters per team. Expand each fighter's row to choose their assist, one of the six base colors, or an installed **Alternate costume**. Use the arrows to change team order.
@@ -67,6 +69,8 @@ Some effects keep their original visual or audio state when set by the mod, incl
 3. Elige el idioma, pulsa **Instalar** y después **Jugar**. Puedes cambiar el idioma de la interfaz del mod más tarde desde el menú **Idioma**.
 
 El instalador añade el cargador ASI x64 si falta `dinput8.dll` y guarda los archivos reemplazados en `UMVC3TrainingToolsInt-Backups`. Al iniciar, el mod consulta GitHub Releases. Si aceptas una actualización, descarga y verifica el instalador, cierra el juego, instala la versión y vuelve a abrirlo. Windows puede solicitar permisos de administrador si la carpeta está protegida.
+
+Usa el modo ventana si la ventana del mod no se abre en pantalla completa exclusiva. Timestone permite jugar en una ventana a pantalla completa sin bordes.
 
 ### Entrenamiento rápido y presets
 
